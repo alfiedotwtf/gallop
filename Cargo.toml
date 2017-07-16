@@ -1,0 +1,9 @@
+[package]
+name    = "gallop"
+version = "0.0.1"
+authors = ["Alfie John <alfie@alfie.wtf>"]
+
+description = "General LL(1) Parser"
+repository  = "https://github.com/alfiedotwtf/gallop"
+
+license = "GPL-3.0"
