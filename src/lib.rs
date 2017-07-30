@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use std::iter::Peekable;
 use std::str::Chars;
 
+// TODO: need utilities like STRING
+
 //
 // Public grammar types
 //
@@ -3792,4 +3794,260 @@ mod get_parse_table {
             }),
         }
     }
+}
+
+#[cfg(test)]
+mod parsing_techniques_2nd_ed {
+    use super::*;
+
+	fn get_grammar<'a>() -> Grammar<'a> {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("Session")],
+        ]);
+
+        grammar.insert("Session", vec![
+            vec![RuleElement::NonTerminal("Facts"), RuleElement::NonTerminal("Question")],
+            vec![
+                RuleElement::Terminal('('),
+                RuleElement::NonTerminal("Session"),
+                RuleElement::Terminal(')'),
+                RuleElement::NonTerminal("Session"),
+            ],
+        ]);
+
+        grammar.insert("Facts", vec![
+            vec![
+                RuleElement::NonTerminal("Fact"),
+                RuleElement::NonTerminal("Facts"),
+            ],
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("Fact", vec![
+            vec![
+                RuleElement::Terminal('!'),
+                RuleElement::NonTerminal("STRING"),
+            ]
+        ]);
+
+        grammar.insert("Question", vec![
+            vec![
+                RuleElement::Terminal('?'),
+                RuleElement::NonTerminal("STRING"),
+            ]
+        ]);
+
+        grammar.insert("STRING", vec![
+            vec![
+                RuleElement::Terminal('x'),
+            ],
+        ]);
+
+		grammar
+	}
+
+    #[test]
+    fn pg_243() {
+		let grammar = get_grammar();
+
+        let mut expected_first_set = BTreeMap::new();
+
+        let mut start_first = BTreeSet::new();
+        start_first.insert(FirstElement::Terminal('('));
+        start_first.insert(FirstElement::Terminal('?'));
+        start_first.insert(FirstElement::Terminal('!'));
+
+        let mut session_first = BTreeSet::new();
+        session_first.insert(FirstElement::Terminal('('));
+        session_first.insert(FirstElement::Terminal('?'));
+        session_first.insert(FirstElement::Terminal('!'));
+
+        let mut facts_first = BTreeSet::new();
+        facts_first.insert(FirstElement::Empty);
+        facts_first.insert(FirstElement::Terminal('!'));
+
+        let mut fact_first = BTreeSet::new();
+        fact_first.insert(FirstElement::Terminal('!'));
+
+        let mut question_first = BTreeSet::new();
+        question_first.insert(FirstElement::Terminal('?'));
+
+        let mut string_first = BTreeSet::new();
+        string_first.insert(FirstElement::Terminal('x'));
+
+        expected_first_set.insert("START",    start_first);
+        expected_first_set.insert("Session",  session_first);
+        expected_first_set.insert("Facts",    facts_first);
+        expected_first_set.insert("Fact",     fact_first);
+        expected_first_set.insert("Question", question_first);
+        expected_first_set.insert("STRING",   string_first);
+
+        assert!(get_first_set(&grammar).unwrap() == expected_first_set);
+	}
+
+    #[test]
+    fn pg_246() {
+		let grammar   = get_grammar();
+		let first_set = get_first_set(&grammar).unwrap();
+
+		let mut expected_follow_set: FollowSet = BTreeMap::new();
+
+		let mut session_first = BTreeSet::new();
+		session_first.insert(')');
+
+		let mut facts_first = BTreeSet::new();
+		facts_first.insert('?');
+
+		let mut fact_first = BTreeSet::new();
+		fact_first.insert('!');
+		fact_first.insert('?');
+
+		let mut question_first = BTreeSet::new();
+		question_first.insert(')');
+
+		let mut string_first = BTreeSet::new();
+		string_first.insert('!');
+
+		expected_follow_set.insert("START",    BTreeSet::new());
+		expected_follow_set.insert("Session",  session_first);
+		expected_follow_set.insert("Facts",    facts_first);
+		expected_follow_set.insert("Fact",     fact_first);
+		expected_follow_set.insert("Question", question_first);
+		expected_follow_set.insert("STRING",   string_first);
+
+		assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+	}
+
+    #[test]
+    fn pg_247() {
+		let grammar    = get_grammar();
+		let first_set  = get_first_set(&grammar).unwrap();
+		let follow_set = get_follow_set(&grammar, &first_set);
+
+		let mut expected_parse_table: ParseTable = BTreeMap::new();
+
+		let mut start_parse = BTreeMap::new();
+		start_parse.insert('!', vec![
+			RuleElement::NonTerminal("Session"),
+		]);
+
+		start_parse.insert('(', vec![
+			RuleElement::NonTerminal("Session"),
+		]);
+
+		start_parse.insert('?', vec![
+			RuleElement::NonTerminal("Session"),
+		]);
+
+		let mut session_parse = BTreeMap::new();
+
+		session_parse.insert('(', vec![
+			RuleElement::Terminal('('),
+			RuleElement::NonTerminal("Session"),
+			RuleElement::Terminal(')'),
+			RuleElement::NonTerminal("Session"),
+		]);
+
+		session_parse.insert('!', vec![
+			RuleElement::NonTerminal("Facts"),
+			RuleElement::NonTerminal("Question"),
+		]);
+
+		session_parse.insert('?', vec![
+			RuleElement::NonTerminal("Facts"),
+			RuleElement::NonTerminal("Question"),
+		]);
+
+		let mut facts_parse = BTreeMap::new();
+
+		facts_parse.insert('!', vec![
+			RuleElement::NonTerminal("Fact"),
+			RuleElement::NonTerminal("Facts"),
+		]);
+
+		facts_parse.insert('?', vec![
+			RuleElement::Empty,
+		]);
+
+		let mut fact_parse = BTreeMap::new();
+
+		fact_parse.insert('!', vec![
+			RuleElement::Terminal('!'),
+			RuleElement::NonTerminal("STRING"),
+		]);
+
+		let mut question_parse = BTreeMap::new();
+
+		question_parse.insert('?', vec![
+			RuleElement::Terminal('?'),
+			RuleElement::NonTerminal("STRING"),
+		]);
+
+		let mut string_parse = BTreeMap::new();
+
+		string_parse.insert('x', vec![
+			RuleElement::Terminal('x'),
+		]);
+
+		expected_parse_table.insert("START",    start_parse);
+		expected_parse_table.insert("Session",  session_parse);
+		expected_parse_table.insert("Facts",    facts_parse);
+		expected_parse_table.insert("Fact",     fact_parse);
+		expected_parse_table.insert("Question", question_parse);
+		expected_parse_table.insert("STRING",   string_parse);
+
+		assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+    }
+
+	#[test]
+	fn parse_ok() {
+		let grammar    = get_grammar();
+		let mut parser = Parser::new(&grammar).unwrap();
+
+		assert!(parser.parse("!x?x").unwrap() == ParseTree::NonTerminal {
+			symbol:   "START",
+			children: vec![
+				ParseTree::NonTerminal {
+					symbol:   "Session",
+					children: vec![
+						ParseTree::NonTerminal {
+							symbol:   "Facts",
+							children: vec![
+								ParseTree::NonTerminal {
+									symbol:   "Fact",
+									children: vec![
+										ParseTree::Terminal('!'),
+										ParseTree::NonTerminal {
+											symbol:   "STRING",
+											children: vec![
+												ParseTree::Terminal('x'),
+											],
+										},
+									],
+								},
+								ParseTree::NonTerminal {
+									symbol:   "Facts",
+									children: vec![],
+								},
+							],
+						},
+						ParseTree::NonTerminal {
+							symbol:   "Question",
+							children: vec![
+								ParseTree::Terminal('?'),
+								ParseTree::NonTerminal {
+									symbol:   "STRING",
+									children: vec![
+										ParseTree::Terminal('x'),
+									],
+								},
+							],
+						},
+					],
+				},
+			],
+		});
+	}
 }
