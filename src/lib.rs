@@ -253,17 +253,17 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
                                     let mut first_non_terminal = first_set.get_mut(non_terminal).unwrap();
                                     let old_length             = first_non_terminal.len();
 
-                                    first_rule_element_clone.remove(&FirstElement::Empty);
+                                    let has_empty = first_rule_element_clone.remove(&FirstElement::Empty);
                                     first_non_terminal.extend(first_rule_element_clone);
 
-                                    match old_length != first_non_terminal.len() {
-                                        true  => has_changed = true,
-                                        false => continue,
+                                    if old_length != first_non_terminal.len() {
+                                        has_changed = true;
                                     }
 
-                                    // there is the contrived case of every First(Ui) having {Empty}. When
-                                    // this happens, we should also First(non_terminal) += Empty, but it
-                                    // complicates the code for no real world value
+                                    match has_empty {
+                                        true  => continue,
+                                        false => break,
+                                    }
                                 },
                             }
                         },
@@ -820,15 +820,12 @@ mod get_first_set {
         grammar.insert("A", vec![]);
 
         match get_first_set(&grammar) {
-            Err(_)        => panic!(),
-            Ok(first_set) => {
-                let mut expected_first_set = BTreeMap::new();
-
-                expected_first_set.insert("START", BTreeSet::new());
-                expected_first_set.insert("A",     BTreeSet::new());
-
-                assert!(first_set == expected_first_set)
-            },
+            Ok(_)    => panic!(),
+            Err(err) => assert!(err == GrammarError::InvalidGrammar {
+                non_terminal: "A",
+                rule:         vec![],
+                rule_element: RuleElement::Empty,
+            }),
         }
     }
 
@@ -939,34 +936,6 @@ mod get_first_set {
     }
 
     #[test]
-    fn combo_n() {
-        let mut grammar = Grammar::new();
-
-        grammar.insert("START", vec![
-            vec![RuleElement::NonTerminal("A")],
-        ]);
-
-        grammar.insert("A", vec![
-            vec![RuleElement::NonTerminal("B")],
-        ]);
-
-        grammar.insert("B", vec![]);
-
-        match get_first_set(&grammar) {
-            Err(_)        => panic!(),
-            Ok(first_set) => {
-                let mut expected_first_set = BTreeMap::new();
-
-                expected_first_set.insert("START", BTreeSet::new());
-                expected_first_set.insert("A",     BTreeSet::new());
-                expected_first_set.insert("B",     BTreeSet::new());
-
-                assert!(first_set == expected_first_set);
-            },
-        }
-    }
-
-    #[test]
     fn combo_et() {
         let mut grammar = Grammar::new();
 
@@ -991,34 +960,6 @@ mod get_first_set {
 
                 expected_first_set.insert("START", start_first);
                 expected_first_set.insert("A",     a_first);
-
-                assert!(first_set == expected_first_set);
-            },
-        }
-    }
-
-    #[test]
-    fn combo_en() {
-        let mut grammar = Grammar::new();
-
-        grammar.insert("START", vec![
-            vec![RuleElement::NonTerminal("A")],
-        ]);
-
-        grammar.insert("A", vec![
-            vec![RuleElement::Empty, RuleElement::NonTerminal("B")],
-        ]);
-
-        grammar.insert("B", vec![]);
-
-        match get_first_set(&grammar) {
-            Err(_)        => panic!(),
-            Ok(first_set) => {
-                let mut expected_first_set = BTreeMap::new();
-
-                expected_first_set.insert("START", BTreeSet::new());
-                expected_first_set.insert("A",     BTreeSet::new());
-                expected_first_set.insert("B",     BTreeSet::new());
 
                 assert!(first_set == expected_first_set);
             },
@@ -1274,34 +1215,6 @@ mod get_first_set {
     }
 
     #[test]
-    fn combo_n_e() {
-        let mut grammar = Grammar::new();
-
-        grammar.insert("START", vec![
-            vec![RuleElement::NonTerminal("A")],
-        ]);
-
-        grammar.insert("A", vec![
-            vec![RuleElement::NonTerminal("B"), RuleElement::Empty],
-        ]);
-
-        grammar.insert("B", vec![]);
-
-        match get_first_set(&grammar) {
-            Err(_)        => panic!(),
-            Ok(first_set) => {
-                let mut expected_first_set = BTreeMap::new();
-
-                expected_first_set.insert("START", BTreeSet::new());
-                expected_first_set.insert("A",     BTreeSet::new());
-                expected_first_set.insert("B",     BTreeSet::new());
-
-                assert!(first_set == expected_first_set);
-            },
-        }
-    }
-
-    #[test]
     fn combo_ne_e() {
         let mut grammar = Grammar::new();
 
@@ -1374,40 +1287,6 @@ mod get_first_set {
     }
 
     #[test]
-    fn combo_n_t() {
-        let mut grammar = Grammar::new();
-
-        grammar.insert("START", vec![
-            vec![RuleElement::NonTerminal("A")],
-        ]);
-
-        grammar.insert("A", vec![
-            vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c')],
-        ]);
-
-        grammar.insert("B", vec![]);
-
-        match get_first_set(&grammar) {
-            Err(_)        => panic!(),
-            Ok(first_set) => {
-                let mut expected_first_set = BTreeMap::new();
-
-                let mut start_first = BTreeSet::new();
-                start_first.insert(FirstElement::Terminal('c'));
-
-                let mut a_first = BTreeSet::new();
-                a_first.insert(FirstElement::Terminal('c'));
-
-                expected_first_set.insert("START", start_first);
-                expected_first_set.insert("A",     a_first);
-                expected_first_set.insert("B",     BTreeSet::new());
-
-                assert!(first_set == expected_first_set);
-            },
-        }
-    }
-
-    #[test]
     fn combo_ne_t() {
         let mut grammar = Grammar::new();
 
@@ -1468,11 +1347,9 @@ mod get_first_set {
                 let mut expected_first_set = BTreeMap::new();
 
                 let mut start_first = BTreeSet::new();
-                start_first.insert(FirstElement::Terminal('c'));
                 start_first.insert(FirstElement::Terminal('d'));
 
                 let mut a_first = BTreeSet::new();
-                a_first.insert(FirstElement::Terminal('c'));
                 a_first.insert(FirstElement::Terminal('d'));
 
                 let mut b_first = BTreeSet::new();
@@ -1491,25 +1368,6 @@ mod get_first_set {
 #[cfg(test)]
 mod get_follow_set {
     use super::*;
-
-    #[test]
-    fn is_empty() {
-        let mut grammar = Grammar::new();
-
-        grammar.insert("START", vec![
-            vec![RuleElement::NonTerminal("A")],
-        ]);
-
-        grammar.insert("A", vec![]);
-
-        let first_set               = get_first_set(&grammar).unwrap();
-        let mut expected_follow_set = BTreeMap::new();
-
-        expected_follow_set.insert("START", BTreeSet::new());
-        expected_follow_set.insert("A",     BTreeSet::new());
-
-        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
-    }
 
     #[test]
     fn combo_e() {
@@ -1554,7 +1412,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_n() {
+    fn combo_n_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1565,7 +1423,35 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B")],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_n_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1620,7 +1506,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_en() {
+    fn combo_en_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1631,7 +1517,35 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::NonTerminal("B")],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_en_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::NonTerminal("B")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1686,7 +1600,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_een() {
+    fn combo_een_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1697,7 +1611,35 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::Empty, RuleElement::NonTerminal("B")],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_een_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::Empty, RuleElement::NonTerminal("B")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1752,7 +1694,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_etn() {
+    fn combo_etn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1763,7 +1705,9 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1776,7 +1720,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ene() {
+    fn combo_etn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ene_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1787,7 +1757,9 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::Empty],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1800,7 +1772,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ent() {
+    fn combo_ene_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::Empty],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ent_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1811,7 +1809,9 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::Terminal('c')],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1827,7 +1827,36 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_enn() {
+    fn combo_ent_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::Terminal('c')],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('c');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_enn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1838,8 +1867,13 @@ mod get_follow_set {
             vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1847,6 +1881,40 @@ mod get_follow_set {
         expected_follow_set.insert("START", BTreeSet::new());
         expected_follow_set.insert("A",     BTreeSet::new());
         expected_follow_set.insert("B",     BTreeSet::new());
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_enn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('d');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
         expected_follow_set.insert("C",     BTreeSet::new());
 
         assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
@@ -1895,7 +1963,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_tn() {
+    fn combo_tn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1906,7 +1974,35 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_tn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -1961,7 +2057,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ten() {
+    fn combo_ten_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -1972,7 +2068,35 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::Empty, RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ten_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::Empty, RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2027,7 +2151,7 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ttn() {
+    fn combo_ttn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2038,7 +2162,9 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::Terminal('c'), RuleElement::NonTerminal("D")],
         ]);
 
-        grammar.insert("D", vec![]);
+        grammar.insert("D", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2051,7 +2177,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_tne() {
+    fn combo_ttn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::Terminal('c'), RuleElement::NonTerminal("D")],
+        ]);
+
+        grammar.insert("D", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("D",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_tne_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2062,7 +2214,9 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::Empty],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2075,7 +2229,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_tnt() {
+    fn combo_tne_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_tnt_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2086,7 +2266,9 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::Terminal('d')],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2102,7 +2284,36 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_tnn() {
+    fn combo_tnt_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::Terminal('d')],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut c_follow = BTreeSet::new();
+        c_follow.insert('d');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     c_follow);
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_tnn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2113,8 +2324,13 @@ mod get_follow_set {
             vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::NonTerminal("D")],
         ]);
 
-        grammar.insert("C", vec![]);
-        grammar.insert("D", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("D", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2128,7 +2344,41 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_nee() {
+    fn combo_tnn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C"), RuleElement::NonTerminal("D")],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("D", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut c_follow = BTreeSet::new();
+        c_follow.insert('e');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("C",     c_follow);
+        expected_follow_set.insert("D",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_nee_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2139,7 +2389,9 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Empty],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2152,7 +2404,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_net() {
+    fn combo_nee_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Empty],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_net_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2163,7 +2441,9 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Terminal('c')],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2179,7 +2459,36 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_nen() {
+    fn combo_net_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Terminal('c')],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('c');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_nen_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2190,8 +2499,13 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2205,7 +2519,41 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_nte() {
+    fn combo_nen_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('d');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_nte_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2216,7 +2564,9 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Empty],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2229,7 +2579,33 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ntt() {
+    fn combo_nte_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Empty, RuleElement::Empty],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ntt_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2240,7 +2616,9 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c'), RuleElement::Terminal('d')],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2256,7 +2634,36 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_ntn() {
+    fn combo_ntt_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c'), RuleElement::Terminal('d')],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('c');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ntn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2267,8 +2674,47 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c'), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('c');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_ntn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c'), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2296,8 +2742,13 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::Empty],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2311,7 +2762,41 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_nnt() {
+    fn combo_nne_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::Empty],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('d');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_nnt_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2322,8 +2807,13 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::Terminal('d')],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2343,7 +2833,44 @@ mod get_follow_set {
     }
 
     #[test]
-    fn combo_nnn() {
+    fn combo_nnt_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::Terminal('d')],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('e');
+
+        let mut c_follow = BTreeSet::new();
+        c_follow.insert('d');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     c_follow);
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn combo_nnn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2354,9 +2881,17 @@ mod get_follow_set {
             vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::NonTerminal("D")],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
-        grammar.insert("D", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("D", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set               = get_first_set(&grammar).unwrap();
         let mut expected_follow_set = BTreeMap::new();
@@ -2369,31 +2904,92 @@ mod get_follow_set {
 
         assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
     }
-}
-
-#[cfg(test)]
-mod get_parse_table {
-    use super::*;
 
     #[test]
-    fn is_empty() {
+    fn combo_nnn_t_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
             vec![RuleElement::NonTerminal("A")],
         ]);
 
-        grammar.insert("A", vec![]);
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::NonTerminal("D")],
+        ]);
 
-        let first_set  = get_first_set(&grammar).unwrap();
-        let follow_set = get_follow_set(&grammar, &first_set);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
-        let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", BTreeMap::new());
-        expected_parse_table.insert("A",     BTreeMap::new());
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        grammar.insert("D", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('e');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     BTreeSet::new());
+        expected_follow_set.insert("D",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
     }
+
+    #[test]
+    fn combo_nnn_t_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C"), RuleElement::NonTerminal("D")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('e')],
+        ]);
+
+        grammar.insert("D", vec![
+            vec![RuleElement::Terminal('f')],
+        ]);
+
+        let first_set               = get_first_set(&grammar).unwrap();
+        let mut expected_follow_set = BTreeMap::new();
+
+        let mut b_follow = BTreeSet::new();
+        b_follow.insert('e');
+
+        let mut c_follow = BTreeSet::new();
+        c_follow.insert('f');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("A",     BTreeSet::new());
+        expected_follow_set.insert("B",     b_follow);
+        expected_follow_set.insert("C",     c_follow);
+        expected_follow_set.insert("D",     BTreeSet::new());
+
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
+}
+
+#[cfg(test)]
+mod get_parse_table {
+    use super::*;
 
     #[test]
     fn combo_e() {
@@ -2454,21 +3050,21 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('b', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
 
-        let mut a_entry = BTreeMap::new();
-        a_entry.insert('b', vec![RuleElement::Empty, RuleElement::Terminal('b')]);
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![RuleElement::Empty, RuleElement::Terminal('b')]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     a_entry);
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
-    fn combo_en() {
+    fn combo_en_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2479,7 +3075,9 @@ mod get_parse_table {
             vec![RuleElement::Empty, RuleElement::NonTerminal("B")],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
@@ -2488,6 +3086,45 @@ mod get_parse_table {
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     BTreeMap::new());
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_en_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Empty, RuleElement::NonTerminal("B")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('c', vec![
+            RuleElement::Empty,
+            RuleElement::NonTerminal("B"),
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -2575,15 +3212,15 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('b', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
 
-        let mut a_entry = BTreeMap::new();
-        a_entry.insert('b', vec![RuleElement::Terminal('b')]);
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![RuleElement::Terminal('b')]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     a_entry);
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -2603,15 +3240,15 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('b', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
 
-        let mut a_entry = BTreeMap::new();
-        a_entry.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Empty]);
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Empty]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     a_entry);
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -2631,15 +3268,15 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('b', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
 
-        let mut a_entry = BTreeMap::new();
-        a_entry.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Terminal('c')]);
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Terminal('c')]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     a_entry);
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -2697,7 +3334,7 @@ mod get_parse_table {
     }
 
     #[test]
-    fn combo_tn() {
+    fn combo_tn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2708,27 +3345,68 @@ mod get_parse_table {
             vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("C", vec![]);
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('b', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
 
-        let mut a_entry = BTreeMap::new();
-        a_entry.insert('b', vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")]);
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     a_entry);
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("C",     BTreeMap::new());
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
-    fn combo_n() {
+    fn combo_tn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('b', vec![
+            RuleElement::Terminal('b'),
+            RuleElement::NonTerminal("C"),
+        ]);
+
+        let mut c_parse = BTreeMap::new();
+        c_parse.insert('d', vec![RuleElement::Terminal('d')]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("C",     c_parse);
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_n_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2739,7 +3417,9 @@ mod get_parse_table {
             vec![RuleElement::NonTerminal("B")],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
@@ -2753,7 +3433,45 @@ mod get_parse_table {
     }
 
     #[test]
-    fn combo_ne() {
+    fn combo_n_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('c', vec![
+            RuleElement::NonTerminal("B"),
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_ne_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2764,7 +3482,9 @@ mod get_parse_table {
             vec![RuleElement::NonTerminal("B"), RuleElement::Empty],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
@@ -2773,6 +3493,45 @@ mod get_parse_table {
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     BTreeMap::new());
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_ne_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Empty],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('c')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('c', vec![
+            RuleElement::NonTerminal("B"),
+            RuleElement::Empty,
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -2812,7 +3571,7 @@ mod get_parse_table {
     }
 
     #[test]
-    fn combo_nt() {
+    fn combo_nt_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2823,25 +3582,74 @@ mod get_parse_table {
             vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c')],
         ]);
 
-        grammar.insert("B", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        let mut start_entry = BTreeMap::new();
-        start_entry.insert('c', vec![RuleElement::NonTerminal("A")]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
 
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('c', vec![
+            RuleElement::NonTerminal("B"),
+            RuleElement::Terminal('c'),
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('c', vec![RuleElement::Empty]);
 
         let mut expected_parse_table = BTreeMap::new();
-        expected_parse_table.insert("START", start_entry);
-        expected_parse_table.insert("A",     BTreeMap::new());
-        expected_parse_table.insert("B",     BTreeMap::new());
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
-    fn combo_nn() {
+    fn combo_nt_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::Terminal('c')],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('d', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('d', vec![
+            RuleElement::NonTerminal("B"),
+            RuleElement::Terminal('c'),
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('d', vec![RuleElement::Terminal('d')]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_nn_e() {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -2852,8 +3660,13 @@ mod get_parse_table {
             vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C")],
         ]);
 
-        grammar.insert("B", vec![]);
-        grammar.insert("C", vec![]);
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Empty],
+        ]);
 
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
@@ -2863,6 +3676,55 @@ mod get_parse_table {
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     BTreeMap::new());
         expected_parse_table.insert("C",     BTreeMap::new());
+
+        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+    }
+
+    #[test]
+    fn combo_nn_t() {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("A")],
+        ]);
+
+        grammar.insert("A", vec![
+            vec![RuleElement::NonTerminal("B"), RuleElement::NonTerminal("C")],
+        ]);
+
+        grammar.insert("B", vec![
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("C", vec![
+            vec![RuleElement::Terminal('d')],
+        ]);
+
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert('d', vec![RuleElement::NonTerminal("A")]);
+
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert('d', vec![
+            RuleElement::NonTerminal("B"),
+            RuleElement::NonTerminal("C"),
+        ]);
+
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert('d', vec![RuleElement::Empty]);
+
+        let mut c_parse = BTreeMap::new();
+        c_parse.insert('d', vec![
+            RuleElement::Terminal('d'),
+        ]);
+
+        let mut expected_parse_table = BTreeMap::new();
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("A",     a_parse);
+        expected_parse_table.insert("B",     b_parse);
+        expected_parse_table.insert("C",     c_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
