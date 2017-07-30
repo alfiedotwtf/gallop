@@ -216,6 +216,14 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
         let mut has_changed = false;
 
         for (non_terminal, rules) in grammar {
+            if rules.is_empty() {
+                return Err(GrammarError::InvalidGrammar {
+                    non_terminal: non_terminal,
+                    rule:         vec![],
+                    rule_element: RuleElement::Empty,
+                });
+            }
+            
             for rule in rules {
                 let mut has_empty = false;
 
