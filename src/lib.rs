@@ -4095,3 +4095,270 @@ mod parsing_techniques_2nd_ed {
         });
     }
 }
+
+#[cfg(test)]
+mod compilers_1st_ed {
+    use super::*;
+
+    fn get_grammar<'a>() -> Grammar<'a> {
+        let mut grammar = Grammar::new();
+
+        grammar.insert("START", vec![
+            vec![RuleElement::NonTerminal("E")],
+        ]);
+
+        grammar.insert("E", vec![
+            vec![
+                RuleElement::NonTerminal("T"),
+                RuleElement::NonTerminal("Edash"),
+            ],
+        ]);
+
+        grammar.insert("Edash", vec![
+            vec![
+                RuleElement::Terminal('+'),
+                RuleElement::NonTerminal("T"),
+                RuleElement::NonTerminal("Edash"),
+            ],
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("T", vec![
+            vec![
+                RuleElement::NonTerminal("F"),
+                RuleElement::NonTerminal("Tdash"),
+            ],
+        ]);
+
+        grammar.insert("Tdash", vec![
+            vec![
+                RuleElement::Terminal('*'),
+                RuleElement::NonTerminal("F"),
+                RuleElement::NonTerminal("Tdash"),
+            ],
+            vec![RuleElement::Empty],
+        ]);
+
+        grammar.insert("F", vec![
+            vec![
+                RuleElement::Terminal('('),
+                RuleElement::NonTerminal("E"),
+                RuleElement::Terminal(')'),
+            ],
+            vec![
+                RuleElement::Terminal('i'),
+                RuleElement::Terminal('d'),
+            ],
+        ]);
+
+        grammar
+    }
+
+    #[test]
+    fn pg_190() {
+        let grammar = get_grammar();
+
+        let mut expected_first_set = BTreeMap::new();
+
+        let mut start_first = BTreeSet::new();
+        start_first.insert(FirstElement::Terminal('('));
+        start_first.insert(FirstElement::Terminal('i'));
+
+        let mut e_first = BTreeSet::new();
+        e_first.insert(FirstElement::Terminal('('));
+        e_first.insert(FirstElement::Terminal('i'));
+
+        let mut t_first = BTreeSet::new();
+        t_first.insert(FirstElement::Terminal('('));
+        t_first.insert(FirstElement::Terminal('i'));
+
+        let mut f_first = BTreeSet::new();
+        f_first.insert(FirstElement::Terminal('('));
+        f_first.insert(FirstElement::Terminal('i'));
+
+        let mut edash_first = BTreeSet::new();
+        edash_first.insert(FirstElement::Terminal('+'));
+        edash_first.insert(FirstElement::Empty);
+
+        let mut tdash_first = BTreeSet::new();
+        tdash_first.insert(FirstElement::Terminal('*'));
+        tdash_first.insert(FirstElement::Empty);
+
+        expected_first_set.insert("START", start_first);
+        expected_first_set.insert("E",     e_first);
+        expected_first_set.insert("T",     t_first);
+        expected_first_set.insert("F",     f_first);
+        expected_first_set.insert("Edash", edash_first);
+        expected_first_set.insert("Tdash", tdash_first);
+
+        assert!(get_first_set(&grammar).unwrap() == expected_first_set);
+
+        let mut expected_follow_set: FollowSet = BTreeMap::new();
+
+        let mut e_follow = BTreeSet::new();
+        e_follow.insert(')');
+
+        let mut edash_follow = BTreeSet::new();
+        edash_follow.insert(')');
+
+        let mut t_follow = BTreeSet::new();
+        t_follow.insert('+');
+        t_follow.insert(')');
+
+        let mut tdash_follow = BTreeSet::new();
+        tdash_follow.insert('+');
+        tdash_follow.insert(')');
+
+        let mut f_follow = BTreeSet::new();
+        f_follow.insert('+');
+        f_follow.insert('*');
+        f_follow.insert(')');
+
+        expected_follow_set.insert("START", BTreeSet::new());
+        expected_follow_set.insert("E",     e_follow);
+        expected_follow_set.insert("T",     t_follow);
+        expected_follow_set.insert("F",     f_follow);
+        expected_follow_set.insert("Edash", edash_follow);
+        expected_follow_set.insert("Tdash", tdash_follow);
+
+        assert!(get_follow_set(&grammar, &expected_first_set) == expected_follow_set);
+    }
+
+    #[test]
+    fn pg_188() {
+        let grammar    = get_grammar();
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
+
+        let mut expected_parse_table: ParseTable = BTreeMap::new();
+
+        let mut start_parse = BTreeMap::new();
+
+        start_parse.insert(ParseTableElement::Terminal('i'), vec![
+          RuleElement::NonTerminal("E"),
+        ]);
+
+        start_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::NonTerminal("E"),
+        ]);
+
+        let mut e_parse = BTreeMap::new();
+
+        e_parse.insert(ParseTableElement::Terminal('i'), vec![
+          RuleElement::NonTerminal("T"),
+          RuleElement::NonTerminal("Edash"),
+        ]);
+
+        e_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::NonTerminal("T"),
+          RuleElement::NonTerminal("Edash"),
+        ]);
+
+        let mut edash_parse = BTreeMap::new();
+
+        edash_parse.insert(ParseTableElement::Terminal('+'), vec![
+          RuleElement::Terminal('+'),
+          RuleElement::NonTerminal("T"),
+          RuleElement::NonTerminal("Edash"),
+        ]);
+
+        edash_parse.insert(ParseTableElement::Terminal(')'), vec![
+          RuleElement::Empty,
+        ]);
+
+        edash_parse.insert(ParseTableElement::Empty, vec![
+          RuleElement::Empty,
+        ]);
+
+        let mut t_parse = BTreeMap::new();
+
+        t_parse.insert(ParseTableElement::Terminal('i'), vec![
+          RuleElement::NonTerminal("F"),
+          RuleElement::NonTerminal("Tdash"),
+        ]);
+
+        t_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::NonTerminal("F"),
+          RuleElement::NonTerminal("Tdash"),
+        ]);
+
+        let mut tdash_parse = BTreeMap::new();
+
+        tdash_parse.insert(ParseTableElement::Terminal('+'), vec![
+          RuleElement::Empty,
+        ]);
+
+        tdash_parse.insert(ParseTableElement::Terminal('*'), vec![
+          RuleElement::Terminal('*'),
+          RuleElement::NonTerminal("F"),
+          RuleElement::NonTerminal("Tdash"),
+        ]);
+
+        tdash_parse.insert(ParseTableElement::Terminal(')'), vec![
+          RuleElement::Empty,
+        ]);
+
+        tdash_parse.insert(ParseTableElement::Empty, vec![
+          RuleElement::Empty,
+        ]);
+
+        let mut f_parse = BTreeMap::new();
+
+        f_parse.insert(ParseTableElement::Terminal('i'), vec![
+          RuleElement::Terminal('i'),
+          RuleElement::Terminal('d'),
+        ]);
+
+        f_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::Terminal('('),
+          RuleElement::NonTerminal("E"),
+          RuleElement::Terminal(')'),
+        ]);
+
+        expected_parse_table.insert("START", start_parse);
+        expected_parse_table.insert("E",     e_parse);
+        expected_parse_table.insert("Edash", edash_parse);
+        expected_parse_table.insert("T",     t_parse);
+        expected_parse_table.insert("Tdash", tdash_parse);
+        expected_parse_table.insert("F",     f_parse);
+
+        assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+    }
+
+    #[test]
+    fn parse_ok() {
+        let grammar    = get_grammar();
+        let mut parser = Parser::new(&grammar).unwrap();
+
+        assert!(parser.parse("id").unwrap() == ParseTree::NonTerminal {
+          symbol:   "START",
+          children: vec![
+            ParseTree::NonTerminal {
+              symbol:   "E",
+              children: vec![
+                ParseTree::NonTerminal {
+                  symbol:   "T",
+                  children: vec![
+                    ParseTree::NonTerminal {
+                      symbol:   "F",
+                      children: vec![
+                        ParseTree::Terminal('i'),
+                        ParseTree::Terminal('d'),
+                      ],
+                    },
+                    ParseTree::NonTerminal {
+                      symbol:   "Tdash",
+                      children: vec![],
+                    },
+                  ],
+                },
+                ParseTree::NonTerminal {
+                  symbol:   "Edash",
+                  children: vec![],
+                },
+              ],
+            },
+          ],
+        });
+    }
+}
