@@ -124,8 +124,13 @@ impl <'a>Parser<'a> {
             ParseTree::Terminal(_)                              => { panic!("This should never happen") },
             ParseTree::NonTerminal { symbol, ref mut children } => {
                 let parse_table_entry = match input_stack.input.peek() {
-                    None             => return Some(ParseError::NoMoreInput),
-                    Some(next_input) => match self.parse_table.get(symbol).unwrap().get(&next_input) {
+                    None             => {
+                        match self.parse_table.get(symbol).unwrap().get(&ParseTableElement::Empty) {
+                            Some(empty) => empty,
+                            None        => return Some(ParseError::NoMoreInput),
+                        }
+                    },
+                    Some(next_input) => match self.parse_table.get(symbol).unwrap().get(&ParseTableElement::Terminal(*next_input)) {
                         None       => return Some(ParseError::InvalidInput(input_stack.index)),
                         Some(rule) => rule,
                     },
@@ -171,7 +176,13 @@ impl <'a>Parser<'a> {
 // Private parsing types
 //
 
-type ParseTable<'a> = BTreeMap<NonTerminal<'a>, BTreeMap<Terminal, Rule<'a>>>;
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ParseTableElement {
+    Empty,
+    Terminal(char),
+}
+
+type ParseTable<'a> = BTreeMap<NonTerminal<'a>, BTreeMap<ParseTableElement, Rule<'a>>>;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum FirstElement {
@@ -413,7 +424,7 @@ fn get_parse_table<'a>(
                 match *rule_element {
                     RuleElement::Empty       => { extend_from_empty = true },
                     RuleElement::Terminal(u) => {
-                        match parse_table_non_terminal.insert(u, rule.clone()).is_some() {
+                        match parse_table_non_terminal.insert(ParseTableElement::Terminal(u), rule.clone()).is_some() {
                             false => break,
                             true  => return Err(GrammarError::Conflict {
                                 non_terminal: non_terminal,
@@ -430,7 +441,7 @@ fn get_parse_table<'a>(
                             match first_u {
                                 FirstElement::Empty        => {},
                                 FirstElement::Terminal(fu) => {
-                                    match parse_table_non_terminal.insert(fu, rule.clone()).is_some() {
+                                    match parse_table_non_terminal.insert(ParseTableElement::Terminal(fu), rule.clone()).is_some() {
                                         false => continue,
                                         true  => return Err(GrammarError::Conflict {
                                             non_terminal: non_terminal,
@@ -454,7 +465,7 @@ fn get_parse_table<'a>(
                 false => continue,
                 true  => {
                     for follow_u in follow_non_terminal {
-                        match parse_table_non_terminal.insert(*follow_u, rule.clone()).is_some() {
+                        match parse_table_non_terminal.insert(ParseTableElement::Terminal(*follow_u), rule.clone()).is_some() {
                             false => continue,
                             true  => return Err(GrammarError::Conflict {
                                 non_terminal: non_terminal,
@@ -464,6 +475,12 @@ fn get_parse_table<'a>(
                         }
                     }
                 },
+            }
+
+            let first_non_terminal = first_set.get(non_terminal).unwrap();
+
+            if first_non_terminal.contains(&FirstElement::Empty) {
+                parse_table_non_terminal.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
             }
         }
     }
@@ -539,10 +556,10 @@ mod new {
             Err(_)     => panic!(),
             Ok(parser) => {
                 let mut start_rules = BTreeMap::new();
-                start_rules.insert('a', vec![RuleElement::NonTerminal("A")]);
+                start_rules.insert(ParseTableElement::Terminal('a'), vec![RuleElement::NonTerminal("A")]);
 
                 let mut a_rules = BTreeMap::new();
-                a_rules.insert('a', vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')]);
+                a_rules.insert(ParseTableElement::Terminal('a'), vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')]);
 
                 let mut expected_parse_table  = BTreeMap::new();
                 expected_parse_table.insert("START", start_rules);
@@ -640,7 +657,7 @@ mod _parse {
         // in reality, this should never happen as we only ever enter _parse() on non-terminals
 
         let mut start_rules = BTreeMap::new();
-        start_rules.insert('a', vec![RuleElement::Terminal('b')]);
+        start_rules.insert(ParseTableElement::Terminal('a'), vec![RuleElement::Terminal('b')]);
 
         let mut parse_table  = BTreeMap::new();
         parse_table.insert("START", start_rules);
@@ -3008,9 +3025,12 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
+        let mut a_parse = BTreeMap::new();
+        a_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", BTreeMap::new());
-        expected_parse_table.insert("A",     BTreeMap::new());
+        expected_parse_table.insert("A",     a_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3053,10 +3073,10 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![RuleElement::Empty, RuleElement::Terminal('b')]);
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::Empty, RuleElement::Terminal('b')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3084,10 +3104,13 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
-        expected_parse_table.insert("B",     BTreeMap::new());
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3112,16 +3135,16 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('c', vec![
+        a_parse.insert(ParseTableElement::Terminal('c'), vec![
             RuleElement::Empty,
             RuleElement::NonTerminal("B"),
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+        b_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::Terminal('c')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3215,10 +3238,10 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![RuleElement::Terminal('b')]);
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::Terminal('b')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3243,10 +3266,10 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Empty]);
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::Terminal('b'), RuleElement::Empty]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3271,10 +3294,10 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::Terminal('c')]);
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::Terminal('b'), RuleElement::Terminal('c')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3355,15 +3378,18 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")]);
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::Terminal('b'), RuleElement::NonTerminal("C")]);
+
+        let mut c_parse = BTreeMap::new();
+        c_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
         expected_parse_table.insert("A",     a_parse);
-        expected_parse_table.insert("C",     BTreeMap::new());
+        expected_parse_table.insert("C",     c_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3388,16 +3414,16 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('b', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('b'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('b', vec![
+        a_parse.insert(ParseTableElement::Terminal('b'), vec![
             RuleElement::Terminal('b'),
             RuleElement::NonTerminal("C"),
         ]);
 
         let mut c_parse = BTreeMap::new();
-        c_parse.insert('d', vec![RuleElement::Terminal('d')]);
+        c_parse.insert(ParseTableElement::Terminal('d'), vec![RuleElement::Terminal('d')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3426,10 +3452,13 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
-        expected_parse_table.insert("B",     BTreeMap::new());
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3454,15 +3483,15 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('c', vec![
+        a_parse.insert(ParseTableElement::Terminal('c'), vec![
             RuleElement::NonTerminal("B"),
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+        b_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::Terminal('c')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3491,10 +3520,13 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
-        expected_parse_table.insert("B",     BTreeMap::new());
+        expected_parse_table.insert("B",     b_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3519,16 +3551,16 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('c', vec![
+        a_parse.insert(ParseTableElement::Terminal('c'), vec![
             RuleElement::NonTerminal("B"),
             RuleElement::Empty,
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('c', vec![RuleElement::Terminal('c')]);
+        b_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::Terminal('c')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3592,16 +3624,17 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('c', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('c', vec![
+        a_parse.insert(ParseTableElement::Terminal('c'), vec![
             RuleElement::NonTerminal("B"),
             RuleElement::Terminal('c'),
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('c', vec![RuleElement::Empty]);
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+        b_parse.insert(ParseTableElement::Terminal('c'), vec![RuleElement::Empty]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3631,16 +3664,16 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('d', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('d'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('d', vec![
+        a_parse.insert(ParseTableElement::Terminal('d'), vec![
             RuleElement::NonTerminal("B"),
             RuleElement::Terminal('c'),
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('d', vec![RuleElement::Terminal('d')]);
+        b_parse.insert(ParseTableElement::Terminal('d'), vec![RuleElement::Terminal('d')]);
 
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", start_parse);
@@ -3673,11 +3706,17 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
+        let mut b_parse = BTreeMap::new();
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
+        let mut c_parse = BTreeMap::new();
+        c_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+
         let mut expected_parse_table = BTreeMap::new();
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
-        expected_parse_table.insert("B",     BTreeMap::new());
-        expected_parse_table.insert("C",     BTreeMap::new());
+        expected_parse_table.insert("B",     b_parse);
+        expected_parse_table.insert("C",     c_parse);
 
         assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
     }
@@ -3706,19 +3745,20 @@ mod get_parse_table {
         let follow_set = get_follow_set(&grammar, &first_set);
 
         let mut start_parse = BTreeMap::new();
-        start_parse.insert('d', vec![RuleElement::NonTerminal("A")]);
+        start_parse.insert(ParseTableElement::Terminal('d'), vec![RuleElement::NonTerminal("A")]);
 
         let mut a_parse = BTreeMap::new();
-        a_parse.insert('d', vec![
+        a_parse.insert(ParseTableElement::Terminal('d'), vec![
             RuleElement::NonTerminal("B"),
             RuleElement::NonTerminal("C"),
         ]);
 
         let mut b_parse = BTreeMap::new();
-        b_parse.insert('d', vec![RuleElement::Empty]);
+        b_parse.insert(ParseTableElement::Empty, vec![RuleElement::Empty]);
+        b_parse.insert(ParseTableElement::Terminal('d'), vec![RuleElement::Empty]);
 
         let mut c_parse = BTreeMap::new();
-        c_parse.insert('d', vec![
+        c_parse.insert(ParseTableElement::Terminal('d'), vec![
             RuleElement::Terminal('d'),
         ]);
 
@@ -3800,7 +3840,7 @@ mod get_parse_table {
 mod parsing_techniques_2nd_ed {
     use super::*;
 
-	fn get_grammar<'a>() -> Grammar<'a> {
+    fn get_grammar<'a>() -> Grammar<'a> {
         let mut grammar = Grammar::new();
 
         grammar.insert("START", vec![
@@ -3845,12 +3885,12 @@ mod parsing_techniques_2nd_ed {
             ],
         ]);
 
-		grammar
-	}
+        grammar
+    }
 
     #[test]
     fn pg_243() {
-		let grammar = get_grammar();
+        let grammar = get_grammar();
 
         let mut expected_first_set = BTreeMap::new();
 
@@ -3885,169 +3925,173 @@ mod parsing_techniques_2nd_ed {
         expected_first_set.insert("STRING",   string_first);
 
         assert!(get_first_set(&grammar).unwrap() == expected_first_set);
-	}
+    }
 
     #[test]
     fn pg_246() {
-		let grammar   = get_grammar();
-		let first_set = get_first_set(&grammar).unwrap();
+        let grammar   = get_grammar();
+        let first_set = get_first_set(&grammar).unwrap();
 
-		let mut expected_follow_set: FollowSet = BTreeMap::new();
+        let mut expected_follow_set: FollowSet = BTreeMap::new();
 
-		let mut session_first = BTreeSet::new();
-		session_first.insert(')');
+        let mut session_first = BTreeSet::new();
+        session_first.insert(')');
 
-		let mut facts_first = BTreeSet::new();
-		facts_first.insert('?');
+        let mut facts_first = BTreeSet::new();
+        facts_first.insert('?');
 
-		let mut fact_first = BTreeSet::new();
-		fact_first.insert('!');
-		fact_first.insert('?');
+        let mut fact_first = BTreeSet::new();
+        fact_first.insert('!');
+        fact_first.insert('?');
 
-		let mut question_first = BTreeSet::new();
-		question_first.insert(')');
+        let mut question_first = BTreeSet::new();
+        question_first.insert(')');
 
-		let mut string_first = BTreeSet::new();
-		string_first.insert('!');
+        let mut string_first = BTreeSet::new();
+        string_first.insert('!');
 
-		expected_follow_set.insert("START",    BTreeSet::new());
-		expected_follow_set.insert("Session",  session_first);
-		expected_follow_set.insert("Facts",    facts_first);
-		expected_follow_set.insert("Fact",     fact_first);
-		expected_follow_set.insert("Question", question_first);
-		expected_follow_set.insert("STRING",   string_first);
+        expected_follow_set.insert("START",    BTreeSet::new());
+        expected_follow_set.insert("Session",  session_first);
+        expected_follow_set.insert("Facts",    facts_first);
+        expected_follow_set.insert("Fact",     fact_first);
+        expected_follow_set.insert("Question", question_first);
+        expected_follow_set.insert("STRING",   string_first);
 
-		assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
-	}
+        assert!(get_follow_set(&grammar, &first_set) == expected_follow_set);
+    }
 
     #[test]
     fn pg_247() {
-		let grammar    = get_grammar();
-		let first_set  = get_first_set(&grammar).unwrap();
-		let follow_set = get_follow_set(&grammar, &first_set);
+        let grammar    = get_grammar();
+        let first_set  = get_first_set(&grammar).unwrap();
+        let follow_set = get_follow_set(&grammar, &first_set);
 
-		let mut expected_parse_table: ParseTable = BTreeMap::new();
+        let mut expected_parse_table: ParseTable = BTreeMap::new();
 
-		let mut start_parse = BTreeMap::new();
-		start_parse.insert('!', vec![
-			RuleElement::NonTerminal("Session"),
-		]);
+        let mut start_parse = BTreeMap::new();
+        start_parse.insert(ParseTableElement::Terminal('!'), vec![
+          RuleElement::NonTerminal("Session"),
+        ]);
 
-		start_parse.insert('(', vec![
-			RuleElement::NonTerminal("Session"),
-		]);
+        start_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::NonTerminal("Session"),
+        ]);
 
-		start_parse.insert('?', vec![
-			RuleElement::NonTerminal("Session"),
-		]);
+        start_parse.insert(ParseTableElement::Terminal('?'), vec![
+          RuleElement::NonTerminal("Session"),
+        ]);
 
-		let mut session_parse = BTreeMap::new();
+        let mut session_parse = BTreeMap::new();
 
-		session_parse.insert('(', vec![
-			RuleElement::Terminal('('),
-			RuleElement::NonTerminal("Session"),
-			RuleElement::Terminal(')'),
-			RuleElement::NonTerminal("Session"),
-		]);
+        session_parse.insert(ParseTableElement::Terminal('('), vec![
+          RuleElement::Terminal('('),
+          RuleElement::NonTerminal("Session"),
+          RuleElement::Terminal(')'),
+          RuleElement::NonTerminal("Session"),
+        ]);
 
-		session_parse.insert('!', vec![
-			RuleElement::NonTerminal("Facts"),
-			RuleElement::NonTerminal("Question"),
-		]);
+        session_parse.insert(ParseTableElement::Terminal('!'), vec![
+          RuleElement::NonTerminal("Facts"),
+          RuleElement::NonTerminal("Question"),
+        ]);
 
-		session_parse.insert('?', vec![
-			RuleElement::NonTerminal("Facts"),
-			RuleElement::NonTerminal("Question"),
-		]);
+        session_parse.insert(ParseTableElement::Terminal('?'), vec![
+          RuleElement::NonTerminal("Facts"),
+          RuleElement::NonTerminal("Question"),
+        ]);
 
-		let mut facts_parse = BTreeMap::new();
+        let mut facts_parse = BTreeMap::new();
 
-		facts_parse.insert('!', vec![
-			RuleElement::NonTerminal("Fact"),
-			RuleElement::NonTerminal("Facts"),
-		]);
+        facts_parse.insert(ParseTableElement::Terminal('!'), vec![
+          RuleElement::NonTerminal("Fact"),
+          RuleElement::NonTerminal("Facts"),
+        ]);
 
-		facts_parse.insert('?', vec![
-			RuleElement::Empty,
-		]);
+        facts_parse.insert(ParseTableElement::Terminal('?'), vec![
+          RuleElement::Empty,
+        ]);
 
-		let mut fact_parse = BTreeMap::new();
+        facts_parse.insert(ParseTableElement::Empty, vec![
+          RuleElement::Empty,
+        ]);
 
-		fact_parse.insert('!', vec![
-			RuleElement::Terminal('!'),
-			RuleElement::NonTerminal("STRING"),
-		]);
+        let mut fact_parse = BTreeMap::new();
 
-		let mut question_parse = BTreeMap::new();
+        fact_parse.insert(ParseTableElement::Terminal('!'), vec![
+          RuleElement::Terminal('!'),
+          RuleElement::NonTerminal("STRING"),
+        ]);
 
-		question_parse.insert('?', vec![
-			RuleElement::Terminal('?'),
-			RuleElement::NonTerminal("STRING"),
-		]);
+        let mut question_parse = BTreeMap::new();
 
-		let mut string_parse = BTreeMap::new();
+        question_parse.insert(ParseTableElement::Terminal('?'), vec![
+          RuleElement::Terminal('?'),
+          RuleElement::NonTerminal("STRING"),
+        ]);
 
-		string_parse.insert('x', vec![
-			RuleElement::Terminal('x'),
-		]);
+        let mut string_parse = BTreeMap::new();
 
-		expected_parse_table.insert("START",    start_parse);
-		expected_parse_table.insert("Session",  session_parse);
-		expected_parse_table.insert("Facts",    facts_parse);
-		expected_parse_table.insert("Fact",     fact_parse);
-		expected_parse_table.insert("Question", question_parse);
-		expected_parse_table.insert("STRING",   string_parse);
+        string_parse.insert(ParseTableElement::Terminal('x'), vec![
+          RuleElement::Terminal('x'),
+        ]);
 
-		assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+        expected_parse_table.insert("START",    start_parse);
+        expected_parse_table.insert("Session",  session_parse);
+        expected_parse_table.insert("Facts",    facts_parse);
+        expected_parse_table.insert("Fact",     fact_parse);
+        expected_parse_table.insert("Question", question_parse);
+        expected_parse_table.insert("STRING",   string_parse);
+
+        assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
     }
 
-	#[test]
-	fn parse_ok() {
-		let grammar    = get_grammar();
-		let mut parser = Parser::new(&grammar).unwrap();
+    #[test]
+    fn parse_ok() {
+        let grammar    = get_grammar();
+        let mut parser = Parser::new(&grammar).unwrap();
 
-		assert!(parser.parse("!x?x").unwrap() == ParseTree::NonTerminal {
-			symbol:   "START",
-			children: vec![
-				ParseTree::NonTerminal {
-					symbol:   "Session",
-					children: vec![
-						ParseTree::NonTerminal {
-							symbol:   "Facts",
-							children: vec![
-								ParseTree::NonTerminal {
-									symbol:   "Fact",
-									children: vec![
-										ParseTree::Terminal('!'),
-										ParseTree::NonTerminal {
-											symbol:   "STRING",
-											children: vec![
-												ParseTree::Terminal('x'),
-											],
-										},
-									],
-								},
-								ParseTree::NonTerminal {
-									symbol:   "Facts",
-									children: vec![],
-								},
-							],
-						},
-						ParseTree::NonTerminal {
-							symbol:   "Question",
-							children: vec![
-								ParseTree::Terminal('?'),
-								ParseTree::NonTerminal {
-									symbol:   "STRING",
-									children: vec![
-										ParseTree::Terminal('x'),
-									],
-								},
-							],
-						},
-					],
-				},
-			],
-		});
-	}
+        assert!(parser.parse("!x?x").unwrap() == ParseTree::NonTerminal {
+          symbol:   "START",
+          children: vec![
+            ParseTree::NonTerminal {
+              symbol:   "Session",
+              children: vec![
+                ParseTree::NonTerminal {
+                  symbol:   "Facts",
+                  children: vec![
+                    ParseTree::NonTerminal {
+                      symbol:   "Fact",
+                      children: vec![
+                        ParseTree::Terminal('!'),
+                        ParseTree::NonTerminal {
+                          symbol:   "STRING",
+                          children: vec![
+                            ParseTree::Terminal('x'),
+                          ],
+                        },
+                      ],
+                    },
+                    ParseTree::NonTerminal {
+                      symbol:   "Facts",
+                      children: vec![],
+                    },
+                  ],
+                },
+                ParseTree::NonTerminal {
+                  symbol:   "Question",
+                  children: vec![
+                    ParseTree::Terminal('?'),
+                    ParseTree::NonTerminal {
+                      symbol:   "STRING",
+                      children: vec![
+                        ParseTree::Terminal('x'),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+    }
 }
