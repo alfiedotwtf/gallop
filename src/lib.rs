@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::iter::Peekable;
 use std::str::Chars;
+use std::char;
 
 // TODO: need utilities like STRING
 
@@ -26,6 +27,7 @@ pub type Grammar<'a> = BTreeMap<NonTerminal<'a>, Vec<Rule<'a>>>;
 pub enum GrammarError<'a> {
     NoStartSymbol,
     EmptyGrammar,
+    ReservedNonTerminal(NonTerminal<'a>),
     InvalidGrammar {
         non_terminal: NonTerminal<'a>,
         rule:         Rule<'a>,
@@ -67,12 +69,42 @@ pub struct Parser<'a> {
 //
 
 impl <'a>Parser<'a> {
-    pub fn new(grammar: &'a Grammar) -> Result<Parser<'a>, GrammarError<'a>> {
+    pub fn new(grammar: &'a mut Grammar) -> Result<Parser<'a>, GrammarError<'a>> {
         match grammar.contains_key("START") {
             false => Err(GrammarError::NoStartSymbol),
             true  => match grammar.len() > 1 {
                 false => Err(GrammarError::EmptyGrammar),
                 true  => {
+                    let reserved_non_terminals          = get_reserved_non_terminals();
+                    let mut reserved_non_terminals_used = BTreeSet::new();
+
+                    for (non_terminal, rules) in grammar.iter() {
+                        if reserved_non_terminals.contains_key(non_terminal) {
+                            return Err(GrammarError::ReservedNonTerminal(non_terminal));
+                        }
+
+                        for rule in rules {
+                            for rule_element in rule {
+                                match *rule_element {
+                                    RuleElement::Terminal(_)    => {},
+                                    RuleElement::Empty          => {},
+                                    RuleElement::NonTerminal(u) => {
+                                        if reserved_non_terminals.contains_key(u) {
+                                            reserved_non_terminals_used.insert(u);
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+
+                    for reserved_non_terminal_used in reserved_non_terminals_used {
+                        grammar.insert(
+                            reserved_non_terminal_used,
+                            reserved_non_terminals.get(reserved_non_terminal_used).unwrap().clone(),
+                        );
+                    }
+
                     let first_set = match get_first_set(&grammar) {
                         Ok(first_set) => first_set,
                         Err(err)      => return Err(err),
@@ -486,6 +518,191 @@ fn get_parse_table<'a>(
     }
 
     Ok(parse_table)
+}
+
+fn get_reserved_non_terminals<'a>() -> BTreeMap<NonTerminal<'a>, Vec<Rule<'a>>>{
+    let mut reserved_non_terminals = BTreeMap::new();
+
+    reserved_non_terminals.insert("ASCII",                    get_reserved_ascii());
+    reserved_non_terminals.insert("ASCII-CONTROL",            get_reserved_ascii_control());
+    reserved_non_terminals.insert("ASCII-WHITESPACE",         get_reserved_ascii_whitespace());
+    reserved_non_terminals.insert("ASCII-DIGIT",              get_reserved_ascii_digit());
+    reserved_non_terminals.insert("ASCII-LOWERCASE",          get_reserved_ascii_lowercase());
+    reserved_non_terminals.insert("ASCII-UPPERCASE",          get_reserved_ascii_uppercase());
+    reserved_non_terminals.insert("ASCII-ALPHABETIC",         get_reserved_ascii_alphabetic());
+    reserved_non_terminals.insert("ASCII-ALPHANUMERIC",       get_reserved_ascii_alphanumeric());
+    reserved_non_terminals.insert("ASCII-HEXDIGIT-LOWERCASE", get_reserved_ascii_hexdigit_lowercase());
+    reserved_non_terminals.insert("ASCII-HEXDIGIT-UPPERCASE", get_reserved_ascii_hexdigit_uppercase());
+    reserved_non_terminals.insert("ASCII-HEXDIGIT",           get_reserved_ascii_hexdigit());
+    reserved_non_terminals.insert("CONTROL",                  get_reserved_control());
+    reserved_non_terminals.insert("WHITESPACE",               get_reserved_whitespace());
+    reserved_non_terminals.insert("NUMERIC",                  get_reserved_numeric());
+    reserved_non_terminals.insert("LOWERCASE",                get_reserved_lowercase());
+    reserved_non_terminals.insert("UPPERCASE",                get_reserved_uppercase());
+    reserved_non_terminals.insert("ALPHABETIC",               get_reserved_alphabetic());
+    reserved_non_terminals.insert("ALPHANUMERIC",             get_reserved_alphanumeric());
+
+    reserved_non_terminals
+}
+
+fn get_reserved_ascii<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x7f + 1 as u8))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_ascii_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (0x0..(0x1f + 1 as u8))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect();
+
+    characters.push(vec![RuleElement::Terminal(0x7f as char)]);
+
+    characters
+}
+
+fn get_reserved_ascii_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    ['\u{0020}', '\u{0009}','\u{000a}','\u{000c}','\u{000d}']
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(*c)])
+        .collect()
+}
+
+fn get_reserved_ascii_digit<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (('0' as u8)..('9' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_ascii_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (('a' as u8)..('z' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_ascii_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (('A' as u8)..('Z' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_ascii_alphabetic<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters = vec![];
+
+    characters.append(&mut get_reserved_ascii_lowercase().clone());
+    characters.append(&mut get_reserved_ascii_uppercase().clone());
+
+    characters
+}
+
+
+fn get_reserved_ascii_alphanumeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement>> = Vec::new();
+
+    characters.append(&mut get_reserved_ascii_alphabetic().clone());
+    characters.append(&mut get_reserved_ascii_digit().clone());
+
+    characters
+}
+
+fn get_reserved_ascii_hexdigit_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (('a' as u8)..('f' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect();
+
+    characters.append(&mut get_reserved_ascii_digit().clone());
+
+    characters
+}
+
+fn get_reserved_ascii_hexdigit_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (('A' as u8)..('F' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect();
+
+    characters.append(&mut get_reserved_ascii_digit().clone());
+
+    characters
+}
+
+fn get_reserved_ascii_hexdigit<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement>> = Vec::new();
+
+    characters.append(&mut get_reserved_ascii_hexdigit_lowercase().clone());
+    characters.append(&mut get_reserved_ascii_hexdigit_uppercase().clone());
+    characters.append(&mut get_reserved_ascii_digit().clone());
+
+    characters
+}
+
+fn get_reserved_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x10FFFF + 1))
+        .into_iter()
+        .filter_map(|c| char::from_u32(c))
+        .filter(|c| (*c).is_control())
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x10FFFF + 1))
+        .into_iter()
+        .filter_map(|c| char::from_u32(c))
+        .filter(|c| (*c).is_whitespace())
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_numeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x10FFFF + 1))
+        .into_iter()
+        .filter_map(|c| char::from_u32(c))
+        .filter(|c| (*c).is_numeric())
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x10FFFF + 1))
+        .into_iter()
+        .filter_map(|c| char::from_u32(c))
+        .filter(|c| (*c).is_lowercase())
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    (0x0..(0x10FFFF + 1))
+        .into_iter()
+        .filter_map(|c| char::from_u32(c))
+        .filter(|c| (*c).is_uppercase())
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+}
+
+fn get_reserved_alphabetic<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement>> = Vec::new();
+
+    characters.append(&mut get_reserved_lowercase().clone());
+    characters.append(&mut get_reserved_uppercase().clone());
+
+    characters
+}
+
+fn get_reserved_alphanumeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
+    let mut characters: Vec<Vec<RuleElement>> = Vec::new();
+
+    characters.append(&mut get_reserved_alphabetic().clone());
+    characters.append(&mut get_reserved_numeric().clone());
+
+    characters
 }
 
 #[cfg(test)]
