@@ -711,9 +711,9 @@ mod new {
 
     #[test]
     fn no_start_symbol() {
-        let grammar = Grammar::new();
+        let mut grammar = Grammar::new();
 
-        match Parser::new(&grammar) {
+        match Parser::new(&mut grammar) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::NoStartSymbol),
         }
@@ -724,7 +724,7 @@ mod new {
         let mut grammar = Grammar::new();
         grammar.insert("START", vec![]);
 
-        match Parser::new(&grammar) {
+        match Parser::new(&mut grammar) {
             Err(err) => assert!(err == GrammarError::EmptyGrammar),
             Ok(_)    => panic!(),
         }
@@ -743,7 +743,7 @@ mod new {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('c')],
         ]);
 
-        match Parser::new(&grammar) {
+        match Parser::new(&mut grammar) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -765,7 +765,7 @@ mod new {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        match Parser::new(&grammar) {
+        match Parser::new(&mut grammar) {
             Err(_)     => panic!(),
             Ok(parser) => {
                 let mut start_rules = BTreeMap::new();
@@ -800,7 +800,7 @@ mod parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("") {
             Ok(_)    => panic!(),
@@ -820,7 +820,7 @@ mod parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("abb") {
             Ok(_)    => panic!(),
@@ -840,7 +840,7 @@ mod parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("ab") {
             Err(_)         => panic!(),
@@ -902,7 +902,7 @@ mod _parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("") {
             Ok(_)    => panic!(),
@@ -922,7 +922,7 @@ mod _parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("c") {
             Ok(_)    => panic!(),
@@ -942,7 +942,7 @@ mod _parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("a") {
             Ok(_)    => panic!(),
@@ -962,7 +962,7 @@ mod _parse {
             vec![RuleElement::Terminal('a'), RuleElement::Terminal('b'), RuleElement::Terminal('c')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("abd") {
             Ok(_)    => panic!(),
@@ -986,7 +986,7 @@ mod _parse {
             vec![RuleElement::Terminal('d'), RuleElement::Terminal('e')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("adfc") {
             Ok(_)    => panic!(),
@@ -1010,7 +1010,7 @@ mod _parse {
             vec![RuleElement::Terminal('d'), RuleElement::Terminal('e')],
         ]);
 
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut parser = Parser::new(&mut grammar).unwrap();
 
         match parser.parse("adec") {
             Err(_)         => panic!(),
@@ -3245,7 +3245,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     a_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3267,7 +3267,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", BTreeMap::new());
         expected_parse_table.insert("A",     BTreeMap::new());
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3295,7 +3295,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", start_parse);
         expected_parse_table.insert("A",     a_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3325,7 +3325,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3364,7 +3364,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3391,7 +3391,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -3425,7 +3425,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -3460,7 +3460,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", start_parse);
         expected_parse_table.insert("A",     a_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3488,7 +3488,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", start_parse);
         expected_parse_table.insert("A",     a_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3516,7 +3516,7 @@ mod get_parse_table {
         expected_parse_table.insert("START", start_parse);
         expected_parse_table.insert("A",     a_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3535,7 +3535,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -3561,7 +3561,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -3604,7 +3604,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("C",     c_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3643,7 +3643,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("C",     c_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3673,7 +3673,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3711,7 +3711,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3741,7 +3741,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     BTreeMap::new());
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3780,7 +3780,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3807,7 +3807,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -3854,7 +3854,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3893,7 +3893,7 @@ mod get_parse_table {
         expected_parse_table.insert("A",     a_parse);
         expected_parse_table.insert("B",     b_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3931,7 +3931,7 @@ mod get_parse_table {
         expected_parse_table.insert("B",     b_parse);
         expected_parse_table.insert("C",     c_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -3981,7 +3981,7 @@ mod get_parse_table {
         expected_parse_table.insert("B",     b_parse);
         expected_parse_table.insert("C",     c_parse);
 
-        assert!(expected_parse_table == get_parse_table(&grammar, &first_set, &follow_set).unwrap());
+        assert!(expected_parse_table == get_parse_table(&mut grammar, &first_set, &follow_set).unwrap());
     }
 
     #[test]
@@ -4004,7 +4004,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -4038,7 +4038,7 @@ mod get_parse_table {
         let first_set  = get_first_set(&grammar).unwrap();
         let follow_set = get_follow_set(&grammar, &first_set);
 
-        match get_parse_table(&grammar, &first_set, &follow_set) {
+        match get_parse_table(&mut grammar, &first_set, &follow_set) {
             Ok(_)    => panic!(),
             Err(err) => assert!(err == GrammarError::Conflict {
                 non_terminal: "A",
@@ -4175,9 +4175,9 @@ mod parsing_techniques_2nd_ed {
 
     #[test]
     fn pg_247() {
-        let grammar    = get_grammar();
-        let first_set  = get_first_set(&grammar).unwrap();
-        let follow_set = get_follow_set(&grammar, &first_set);
+        let mut grammar = get_grammar();
+        let first_set   = get_first_set(&grammar).unwrap();
+        let follow_set  = get_follow_set(&grammar, &first_set);
 
         let mut expected_parse_table: ParseTable = BTreeMap::new();
 
@@ -4255,13 +4255,13 @@ mod parsing_techniques_2nd_ed {
         expected_parse_table.insert("Question", question_parse);
         expected_parse_table.insert("STRING",   string_parse);
 
-        assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+        assert!(get_parse_table(&mut grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
     }
 
     #[test]
     fn parse_ok() {
-        let grammar    = get_grammar();
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut grammar = get_grammar();
+        let mut parser  = Parser::new(&mut grammar).unwrap();
 
         assert!(parser.parse("!x?x").unwrap() == ParseTree::NonTerminal {
           symbol:   "START",
@@ -4439,9 +4439,9 @@ mod compilers_1st_ed {
 
     #[test]
     fn pg_188() {
-        let grammar    = get_grammar();
-        let first_set  = get_first_set(&grammar).unwrap();
-        let follow_set = get_follow_set(&grammar, &first_set);
+        let mut grammar = get_grammar();
+        let first_set   = get_first_set(&grammar).unwrap();
+        let follow_set  = get_follow_set(&grammar, &first_set);
 
         let mut expected_parse_table: ParseTable = BTreeMap::new();
 
@@ -4535,13 +4535,13 @@ mod compilers_1st_ed {
         expected_parse_table.insert("Tdash", tdash_parse);
         expected_parse_table.insert("F",     f_parse);
 
-        assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+        assert!(get_parse_table(&mut grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
     }
 
     #[test]
     fn parse_ok() {
-        let grammar    = get_grammar();
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut grammar = get_grammar();
+        let mut parser  = Parser::new(&mut grammar).unwrap();
 
         assert!(parser.parse("id").unwrap() == ParseTree::NonTerminal {
           symbol:   "START",
@@ -4691,7 +4691,7 @@ mod compiler_design_in_c_1st {
 
     #[test]
     fn pg_217() {
-        let grammar = get_grammar();
+        let grammar   = get_grammar();
         let first_set = get_first_set(&grammar).unwrap();
 
         let mut expected_follow_set: FollowSet = BTreeMap::new();
@@ -4734,9 +4734,9 @@ mod compiler_design_in_c_1st {
 
     #[test]
     fn get_parse_table_ok() {
-        let grammar    = get_grammar();
-        let first_set  = get_first_set(&grammar).unwrap();
-        let follow_set = get_follow_set(&grammar, &first_set);
+        let mut grammar = get_grammar();
+        let first_set   = get_first_set(&grammar).unwrap();
+        let follow_set  = get_follow_set(&grammar, &first_set);
 
         let mut expected_parse_table: ParseTable = BTreeMap::new();
 
@@ -4888,13 +4888,13 @@ mod compiler_design_in_c_1st {
         expected_parse_table.insert("termdash", termdash_parse);
         expected_parse_table.insert("factor",   factor_parse);
 
-        assert!(get_parse_table(&grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
+        assert!(get_parse_table(&mut grammar, &first_set, &follow_set).unwrap() == expected_parse_table);
     }
 
     #[test]
     fn parse_ok() {
-        let grammar    = get_grammar();
-        let mut parser = Parser::new(&grammar).unwrap();
+        let mut grammar = get_grammar();
+        let mut parser  = Parser::new(&mut grammar).unwrap();
 
         assert!(parser.parse("();").unwrap() == ParseTree::NonTerminal {
           symbol:   "START",
