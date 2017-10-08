@@ -62,6 +62,7 @@ pub enum ParseError {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parser<'a> {
     parse_table: ParseTable<'a>,
+    rollups:     BTreeSet<&'a str>,
 }
 
 //
@@ -113,8 +114,13 @@ impl <'a>Parser<'a> {
                     let follow_set = get_follow_set(&grammar, &first_set);
 
                     match get_parse_table(&grammar, &first_set, &follow_set) {
-                        Ok(parse_table) => Ok(Parser { parse_table: parse_table }),
                         Err(err)        => Err(err),
+                        Ok(parse_table) => Ok(
+                            Parser {
+                                parse_table: parse_table,
+                                rollups:     BTreeSet::new(),
+                            }
+                        ),
                     }
                 },
             },
@@ -138,6 +144,12 @@ impl <'a>Parser<'a> {
                 true  => Err(ParseError::InvalidInput(input_stack.index)),
                 false => Ok(parse_tree),
             },
+        }
+    }
+
+    pub fn rollup(&mut self, non_terminals: Vec<&'a str>) {
+        for i in non_terminals {
+            self.rollups.insert(i);
         }
     }
 
@@ -168,6 +180,8 @@ impl <'a>Parser<'a> {
                     },
                 };
 
+                let mut current_children = children;
+
                 for rule_element in parse_table_entry {
                     match *rule_element {
                         RuleElement::Empty       => {},
@@ -177,7 +191,7 @@ impl <'a>Parser<'a> {
                                 Some(next_input) => {
                                     match u == next_input {
                                         false => return Some(ParseError::InvalidInput(input_stack.index)),
-                                        true  => children.push(ParseTree::Terminal(next_input)),
+                                        true  => current_children.push(ParseTree::Terminal(next_input)),
                                     }
 
                                     input_stack.index = input_stack.index + 1;
@@ -191,9 +205,22 @@ impl <'a>Parser<'a> {
                             };
 
                             match self._parse(&mut child, input_stack) {
-                                None        => children.push(child),
                                 Some(error) => return Some(error),
+                                None        => {
+                                    match self.rollups.contains(u) {
+                                        false => current_children.push(child),
+                                        true  => {
+                                            match child {
+                                                ParseTree::Terminal(_)                          => {},
+                                                ParseTree::NonTerminal { ref mut children, .. } => {
+                                                    current_children.append(children);
+                                                }
+                                            }
+                                        },
+                                    }
+                                }
                             }
+
                         },
                     }
                 }
@@ -778,7 +805,10 @@ mod new {
                 expected_parse_table.insert("START", start_rules);
                 expected_parse_table.insert("A",     a_rules);
 
-                assert!(parser == Parser { parse_table: expected_parse_table });
+                assert!(parser == Parser {
+                    parse_table: expected_parse_table,
+                    rollups:     BTreeSet::new(),
+                });
             },
         }
     }
@@ -877,6 +907,7 @@ mod _parse {
 
         let parser = Parser {
             parse_table: parse_table,
+            rollups:     BTreeSet::new(),
         };
 
         let mut parse_tree  = ParseTree::Terminal('a');
@@ -4936,6 +4967,92 @@ mod compiler_design_in_c_1st {
               ],
             },
           ],
+        });
+    }
+}
+
+#[cfg(test)]
+mod rollup {
+    use super::*;
+
+    fn set_grammar<'a>(grammar: &mut Grammar) {
+        grammar.insert("START", vec![
+            vec![
+                RuleElement::NonTerminal("a+"),
+            ],
+        ]);
+
+        grammar.insert("a+", vec![
+            vec![
+                RuleElement::Terminal('a'),
+                RuleElement::NonTerminal("a*"),
+            ],
+        ]);
+
+        grammar.insert("a*", vec![
+            vec![
+                RuleElement::Terminal('a'),
+                RuleElement::NonTerminal("a*"),
+            ],
+            vec![RuleElement::Empty],
+        ]);
+    }
+
+    #[test]
+    pub fn no_rollup() {
+        let mut grammar: Grammar = BTreeMap::new();
+        set_grammar(&mut grammar);
+
+        let mut parser = Parser::new(&mut grammar).unwrap();
+
+        assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+            symbol:   "START",
+            children: vec![
+                ParseTree::NonTerminal {
+                    symbol:   "a+",
+                    children: vec![
+                        ParseTree::Terminal('a'),
+                        ParseTree::NonTerminal {
+                            symbol:   "a*",
+                            children: vec![
+                                ParseTree::Terminal('a'),
+                                ParseTree::NonTerminal {
+                                    symbol:   "a*",
+                                    children: vec![
+                                        ParseTree::Terminal('a'),
+                                        ParseTree::NonTerminal {
+                                            symbol:   "a*",
+                                            children: vec![],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        });
+    }
+
+    #[test]
+    pub fn rollup() {
+        let mut grammar: Grammar = BTreeMap::new();
+        set_grammar(&mut grammar);
+
+        let mut parser = Parser::new(&mut grammar).unwrap();
+
+        parser.rollup(vec![
+            "a+",
+            "a*",
+        ]);
+
+        assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+            symbol:   "START",
+            children: vec![
+                ParseTree::Terminal('a'),
+                ParseTree::Terminal('a'),
+                ParseTree::Terminal('a'),
+            ],
         });
     }
 }
