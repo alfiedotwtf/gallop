@@ -3,7 +3,8 @@ name    = "gallop"
 version = "0.0.6"
 authors = ["Alfie John <alfie@alfie.wtf>"]
 
-description = "General LL(1) Parser"
-repository  = "https://github.com/alfiedotwtf/gallop"
+description   = "General LL(1) Parser"
+documentation = "https://docs.rs/gallop/"
+repository    = "https://github.com/alfiedotwtf/gallop"
 
 license = "GPL-3.0"

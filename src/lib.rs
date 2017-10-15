@@ -1,41 +1,395 @@
+//! Gallop - General LL(1) parser
+//!
+//! # Example
+//!
+//! ```ignore
+//! let mut grammar: Grammar = BTreeMap::new();
+//!
+//! grammar.insert("START", vec![
+//!   vec![RuleElement::NonTerminal("a+")],
+//! ]);
+//!
+//! grammar.insert("a+", vec![
+//!   vec![RuleElement::Terminal('a'), RuleElement::NonTerminal("a*")],
+//! ]);
+//!
+//! grammar.insert("a*", vec![
+//!   vec![RuleElement::Terminal('a'), RuleElement::NonTerminal("a*")],
+//!   vec![RuleElement::Empty],
+//! ]);
+//!
+//! let mut parser = Parser::new(&mut grammar).unwrap();
+//!
+//! assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+//!     symbol:   "START",
+//!     children: vec![ParseTree::Terminal('a'), ParseTree::Terminal('a'), ParseTree::Terminal('a')],
+//! });
+//! ```
+//!
+//! # Tutorial
+//!
+//! We'll use the above code to explain how to use ``Gallop``, but we'll do this by stepping
+//! backwards from the bottom and work our way up...
+//!
+//! A sucessful parsing results in a ``ParseTree``, which has the following type:
+//!
+//! ```ignore
+//! pub enum ParseTree<'a> {
+//!   Terminal(char),
+//!   NonTerminal {
+//!     symbol: &'a str,
+//!     children: Vec<ParseTree<'a>>,
+//!   }
+//! }
+//! ```
+//!
+//! - ``ParseTree::Terminal`` represents a single captured Unicode scalar value from the input.
+//! - ``ParseTree::NonTerminal`` is a recursive data structure to represent the current part of the parse tree
+//!
+//! To parse an input string, use the ``parse()`` function from a ``Parser``:
+//!
+//! ```ignore
+//! assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+//!     symbol:   "START",
+//!     children: vec![ParseTree::Terminal('a'), ParseTree::Terminal('a'), ParseTree::Terminal('a')],
+//! });
+//! ```
+//!
+//! To create a ``Parser``, pass it a reference to a ``Grammar``:
+//!
+//! ```ignore
+//! let mut parser = Parser::new(&mut grammar).unwrap();
+//! ```
+//!
+//! A ``Grammar`` has the following type:
+//!
+//! ```ignore
+//! type Grammar<'a> = BTreeMap<NonTerminal<'a>, Vec<Rule<'a>>>;
+//! ```
+//!
+//! The bare ``NonTerminal<'a>`` represents the left-hand side of a production rule, whilst
+//! each element in ``Vec<Rule<'a>>`` contains the ``OR``-seperated right-hand side of a
+//! production rule i.e:
+//!
+//! ```ignore
+//! a+ = 'a' a*
+//!
+//! a* = 'a' a* | ε
+//! ```
+//!
+//! is broken down into:
+//!
+//! ```ignore
+//! a+ =  'a' a*
+//!
+//! a* = ['a'] a*
+//! a* = ε
+//! ```
+//!
+//! and is represented in code by:
+//!
+//! ```ignore
+//! grammar.insert("a+", vec![
+//!   vec![RuleElement::Terminal('a'), RuleElement::NonTerminal("a*")],
+//! ]);
+//!
+//! grammar.insert("a*", vec![
+//!   vec![RuleElement::Terminal('a'), RuleElement::NonTerminal("a*")],
+//!   vec![RuleElement::Empty],
+//! ]);
+//!
+//! ```
+//!
+//! As you can see in that last snippet of code, ``Rule``s are ``Vec<RuleElement>``s,
+//! which there are three types:
+//!
+//!   1. ``RuleElement::Terminal(char)`` - a single Unicode scalar value to scan against
+//!   2. ``RuleElement::NonTerminal(&str)`` - an intermediary syntactic variable
+//!   3. ``RuleElement::Empty``- the empty string
+//!
+//! The last bit of code remaining is about the ``START`` symbol, explained in the
+//! following section.
+//!
+//! # Reserved Non-Terminals
+//!
+//! **The START Symbol**
+//!
+//! As ``Gallop`` is a top-down parser, it needs to know which of it's ``NonTerminal``s
+//! is the "start" symbol. To keep things consistent, ``Gallop`` requires this to be ``START``:
+//!
+//! ```ignore
+//! let mut grammar: Grammar = BTreeMap::new();
+//!
+//! grammar.insert("START", vec![
+//!   ...
+//! ]);
+//!
+//! ```
+//!
+//! **Convenience Non-Terminals**
+//!
+//! Instead of reinventing the wheel each time for commonly used tasks, there are a number of
+//! convenience non-terminals already predefined. These work just like every other non-terminal
+//! e.g:
+//!
+//! ```ignore
+//! let mut country_code: Grammar = BTreeMap::new();
+//!
+//! country_code.insert("START", vec![
+//!   vec!["two-ascii-characters"],
+//! ]);
+//!
+//! country_code.insert("two-ascii-characters", vec![
+//!   vec!["ASCII-UPPERCASE", "ASCII-UPPERCASE"],
+//! ]);
+//! ```
+//!
+//! Note: Using one of the following on the left-hand side of a ``Grammar`` rule results
+//! in a ``ReservedNonTerminal`` ``GrammarError``:
+//!
+//! - ``ALPHABETIC`` ((0x00..0x10FFF).map(|c as char| c.is_lowercase() || c.is_uppercase())
+//! - ``ALPHANUMERIC`` (``ALPHABETIC``, ``NUMERIC``)
+//! - ``ASCII`` (0x00..0x7F)
+//! - ``ASCII-ALPHABETIC`` (``ASCII-LOWERCASE``, ``ASCII-UPPERCASE``)
+//! - ``ASCII-ALPHANUMERIC`` (``ASCII-ALPHABETIC``, ``ASCII-DIGIT``)
+//! - ``ASCII-CONTROL`` (0x00..0x1F, 0x7F)
+//! - ``ASCII-DIGIT`` ('0'..'9')
+//! - ``ASCII-HEXDIGIT`` (``ASCII-DIGIT``, 'a'..'f', 'A'..'F')
+//! - ``ASCII-HEXDIGIT-LOWERCASE`` (``ASCII-DIGIT``, 'a'..'f')
+//! - ``ASCII-HEXDIGIT-UPPERCASE`` (``ASCII-DIGIT``, 'A'..'F')
+//! - ``ASCII-LOWERCASE`` ('a'..'z')
+//! - ``ASCII-UPPERCASE`` ('A'..'Z')
+//! - ``ASCII-WHITESPACE`` (0x0020, 0x0009, 0x000A, 0x000C, 0x000D)
+//! - ``CONTROL`` (0x00..0x10FFF).map(|c as char| c.is_control())
+//! - ``LOWERCASE`` (0x00..0x10FFF).map(|c as char| c.is_lowercase())
+//! - ``NUMERIC`` (0x00..0x10FFF).map(|c as char| c.is_numeric())
+//! - ``UPPERCASE`` (0x00..0x10FFF).map(|c as char| c.is_uppercase())
+//! - ``WHITESPACE`` (0x00..0x10FFF).map(|c as char| c.is_whitespace())
+//!
+//! # Rolling Up the Parse Tree
+//!
+//! When dealing with complex inputs, it's sometimes more digestible to break the grammar
+//! into lots of smaller, more composable non-terminals. The drawback in doing this
+//! though, is the resulting ``ParseTree`` can be really awkward to work with.
+//!
+//! In the following example, we'll try to parse a string containing one or more 'a'
+//! characters:
+//!
+//! ```ignore
+//! let mut grammar: Grammar = BTreeMap::new();
+//!
+//! grammar.insert("START", vec![
+//!   vec![
+//!     RuleElement::NonTerminal("one-or-more-a")
+//!   ],
+//! ]);
+//!
+//! grammar.insert("one-or-more-a", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("zero-or-more-a"),
+//!   ],
+//! ]);
+//!
+//! grammar.insert("zero-or-more-a", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("zero-or-more-a"),
+//!   ],
+//!   vec![
+//!     RuleElement::Empty,
+//!   ],
+//! ]);
+//!
+//! let mut parser = Parser::new(&mut grammar).unwrap();
+//!
+//! assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+//!     symbol:   "START",
+//!     children: vec![
+//!         ParseTree::NonTerminal {
+//!             symbol:   "one-or-more-a",
+//!             children: vec![
+//!                 ParseTree::Terminal('a'),
+//!                 ParseTree::NonTerminal {
+//!                     symbol:   "zero-or-more-a",
+//!                     children: vec![
+//!                         ParseTree::Terminal('a'),
+//!                         ParseTree::NonTerminal {
+//!                             symbol:   "zero-or-more-a",
+//!                             children: vec![
+//!                                 ParseTree::Terminal('a'),
+//!                                 ParseTree::NonTerminal {
+//!                                     symbol:   "zero-or-more-a",
+//!                                     children: vec![],
+//!                                 },
+//!                             ],
+//!                         },
+//!                     ],
+//!                 },
+//!             ],
+//!         },
+//!     ],
+//! });
+//!
+//! ```
+//!
+//! Yuk! And the problem gets worse as the number of 'a' characters increases within the input string.
+//! It would be nice if we could hide some of these intermediate non-terminals... this is
+//! what ``rollup()`` does:
+//!
+//!   - Specify the ``NonTerminal``s to you want to be rolled up
+//!   - When a rolled up non-terminal is found:
+//!     - It's childen are promoted to siblings
+//!     - The rolled up non-terminal is removed
+//!
+//! Here's the same example from above, but now we rollup ``one-or-more-a`` and ``zero-or-more-a``:
+//!
+//! ```ignore
+//! let mut grammar: Grammar = BTreeMap::new();
+//!
+//! grammar.insert("START", vec![
+//!   vec![
+//!     RuleElement::NonTerminal("one-or-more-a")
+//!   ],
+//! ]);
+//!
+//! grammar.insert("one-or-more-a", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("zero-or-more-a"),
+//!   ],
+//! ]);
+//!
+//! grammar.insert("zero-or-more-a", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("zero-or-more-a"),
+//!   ],
+//!   vec![
+//!     RuleElement::Empty,
+//!   ],
+//! ]);
+//!
+//! let mut parser = Parser::new(&mut grammar).unwrap();
+//!
+//! parser.rollup(vec![
+//!     "one-or-more-a",
+//!     "zero-or-more-a",
+//! ]);
+//!
+//! assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+//!     symbol:   "START",
+//!     children: vec![
+//!       ParseTree::Terminal('a'),
+//!       ParseTree::Terminal('a'),
+//!       ParseTree::Terminal('a'),
+//!     ],
+//! });
+//!
+//! ```
+//!
+//! Much nicer!
+//!
+//! **NOTE**: As a convenience, non-terminals ending with ``'*'`` and ``'+'`` are rolled up automatically:
+//!
+//! ```ignore
+//! let mut grammar: Grammar = BTreeMap::new();
+//!
+//! grammar.insert("START", vec![
+//!   vec![
+//!     RuleElement::NonTerminal("a+")
+//!   ],
+//! ]);
+//!
+//! grammar.insert("a+", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("a*"),
+//!   ],
+//! ]);
+//!
+//! grammar.insert("a*", vec![
+//!   vec![
+//!     RuleElement::Terminal('a'),
+//!     RuleElement::NonTerminal("a*"),
+//!   ],
+//!   vec![
+//!     RuleElement::Empty,
+//!   ],
+//! ]);
+//!
+//! let mut parser = Parser::new(&mut grammar).unwrap();
+//!
+//! assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+//!     symbol:   "START",
+//!     children: vec![
+//!       ParseTree::Terminal('a'),
+//!       ParseTree::Terminal('a'),
+//!       ParseTree::Terminal('a'),
+//!     ],
+//! });
+//! ```
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::iter::Peekable;
 use std::str::Chars;
 use std::char;
 
-// TODO: need utilities like STRING
-
 //
 // Public grammar types
 //
 
-pub type Terminal        = char;
-pub type NonTerminal<'a> = &'a str;
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum RuleElement<'a> {
-    Empty,
-    Terminal(char),
-    NonTerminal(&'a str),
-}
-
-pub type Rule<'a>    = Vec<RuleElement<'a>>;
+/// The left and right hand side of the production rules
 pub type Grammar<'a> = BTreeMap<NonTerminal<'a>, Vec<Rule<'a>>>;
 
+/// An intermediary syntactic variable
+pub type NonTerminal<'a> = &'a str;
+
+/// A single Unicode scalar value
+pub type Terminal = char;
+
+/// The right-hand side of a ``Grammar`` production rule
+pub type Rule<'a> = Vec<RuleElement<'a>>;
+
+/// Elements that make up each ``Rule``
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum RuleElement<'a> {
+    /// The empty string
+    Empty,
+    /// An intermediary syntactic variable
+    NonTerminal(&'a str),
+    /// A single Unicode scalar value to scan against
+    Terminal(char),
+}
+
+/// Possible errors that could happen when creating a ``Parser``
 #[derive(Clone, Debug, PartialEq)]
 pub enum GrammarError<'a> {
-    NoStartSymbol,
+    /// The ``Grammar`` has no rules defined yet
     EmptyGrammar,
+    /// The ``START`` ``Rule`` is not defined yet (see "Reserved Non-terminals" section)
+    NoStartSymbol,
+    /// The specified ``NonTerminal`` is actually reserved (see "Reserved Non-terminals" section)
     ReservedNonTerminal(NonTerminal<'a>),
+    /// The specified ``NonTerminal`` is used within a ``Rule`` but is not defined yet
+    UndefinedNonTerminal(NonTerminal<'a>),
+    /// The ``Grammar`` is invalid, as specified by:
     InvalidGrammar {
+        /// The offending ``NonTerminal``
         non_terminal: NonTerminal<'a>,
+        /// The offending ``Rule``
         rule:         Rule<'a>,
+        /// The offending ``RuleElement``
         rule_element: RuleElement<'a>,
     },
+    /// The ``Grammar`` has a conflict, as specified by:
     Conflict {
+        /// The offending ``NonTerminal``
         non_terminal: NonTerminal<'a>,
+        /// The offending ``Rule``
         rule:         Rule<'a>,
+        /// The offending ``RuleElement``
         rule_element: RuleElement<'a>,
     },
 }
@@ -44,21 +398,30 @@ pub enum GrammarError<'a> {
 // Public parsing types
 //
 
+/// The results from a parsing of the input text
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParseTree<'a> {
+    /// A single captured Unicode scalar value from the input
     Terminal(char),
+    /// A recursive data structure to represent the current part of the parse tree
     NonTerminal {
+        /// The name of the intermediary syntactic variable found
         symbol:   &'a str,
+        /// A recursive ``ParseTree`` that lives under the current non-terminal
         children: Vec<ParseTree<'a>>,
     },
 }
 
+/// Possible errors that could happen during parsing
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParseError {
+    /// We expected more input
     NoMoreInput,
+    /// The character at the specified index is not valid within the ``Grammar``
     InvalidInput(u64),
 }
 
+/// Holds the state of the parser for the provided ``Grammar``
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parser<'a> {
     parse_table: ParseTable<'a>,
@@ -69,7 +432,16 @@ pub struct Parser<'a> {
 // Public functions
 //
 
+
 impl <'a>Parser<'a> {
+    /// Creates a ``Parser`` from the provided ``Grammar``
+    ///
+    /// ```ignore
+    /// let parser = match Parser::new(&mut grammar) {
+    ///   Ok(p)    => p,
+    ///   Err(err) => panic!("Error: {:#?}", err),
+    /// };
+    /// ```
     pub fn new(grammar: &'a mut Grammar) -> Result<Parser<'a>, GrammarError<'a>> {
         match grammar.contains_key("START") {
             false => Err(GrammarError::NoStartSymbol),
@@ -90,6 +462,10 @@ impl <'a>Parser<'a> {
                                     RuleElement::Terminal(_)    => {},
                                     RuleElement::Empty          => {},
                                     RuleElement::NonTerminal(u) => {
+                                        if false == grammar.contains_key(u) {
+                                            return Err(GrammarError::UndefinedNonTerminal(u));
+                                        }
+
                                         if reserved_non_terminals.contains_key(u) {
                                             reserved_non_terminals_used.insert(u);
                                         }
@@ -127,6 +503,11 @@ impl <'a>Parser<'a> {
         }
     }
 
+	/// Parse the provided string
+	///
+    /// ```ignore
+	/// println!("Parse tree: {:#?}", parser.parse("a test string"));
+	/// ```
     pub fn parse(&mut self, input: &'a str) -> Result<ParseTree<'a>, ParseError> {
         let mut parse_tree = ParseTree::NonTerminal {
             symbol:   "START",
@@ -147,7 +528,15 @@ impl <'a>Parser<'a> {
         }
     }
 
-    pub fn rollup(&mut self, non_terminals: Vec<&'a str>) {
+	/// Specify any non-terminals that you want rolled up (see "Rolling Up the Parse Tree" section)
+	///
+    /// ```ignore
+	/// parser.rollup(vec![
+	///		"digit+",
+	///		"digit*",
+	/// ]);
+	/// ```
+    pub fn rollup(&mut self, non_terminals: Vec<NonTerminal<'a>>) {
         for i in non_terminals {
             self.rollups.insert(i);
         }
@@ -207,7 +596,7 @@ impl <'a>Parser<'a> {
                             match self._parse(&mut child, input_stack) {
                                 Some(error) => return Some(error),
                                 None        => {
-                                    match self.rollups.contains(u) {
+                                    match self.rollups.contains(u) || u.ends_with('*') || u.ends_with('+') {
                                         false => current_children.push(child),
                                         true  => {
                                             match child {
@@ -295,7 +684,7 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
                     rule_element: RuleElement::Empty,
                 });
             }
-            
+
             for rule in rules {
                 let mut has_empty = false;
 
@@ -627,7 +1016,6 @@ fn get_reserved_ascii_alphabetic<'a>() -> Vec<Vec<RuleElement<'a>>> {
     characters
 }
 
-
 fn get_reserved_ascii_alphanumeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
     let mut characters: Vec<Vec<RuleElement>> = Vec::new();
 
@@ -662,9 +1050,19 @@ fn get_reserved_ascii_hexdigit_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_ascii_hexdigit<'a>() -> Vec<Vec<RuleElement<'a>>> {
     let mut characters: Vec<Vec<RuleElement>> = Vec::new();
 
-    characters.append(&mut get_reserved_ascii_hexdigit_lowercase().clone());
-    characters.append(&mut get_reserved_ascii_hexdigit_uppercase().clone());
     characters.append(&mut get_reserved_ascii_digit().clone());
+
+    characters.append(&mut (('a' as u8)..('f' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+    );
+
+    characters.append(&mut (('A' as u8)..('F' as u8 + 1))
+        .into_iter()
+        .map(|c| vec![RuleElement::Terminal(c as char)])
+        .collect()
+    );
 
     characters
 }
@@ -4978,6 +5376,90 @@ mod rollup {
     fn set_grammar<'a>(grammar: &mut Grammar) {
         grammar.insert("START", vec![
             vec![
+                RuleElement::NonTerminal("one-or-more-a"),
+            ],
+        ]);
+
+        grammar.insert("one-or-more-a", vec![
+            vec![
+                RuleElement::Terminal('a'),
+                RuleElement::NonTerminal("zero-or-more-a"),
+            ],
+        ]);
+
+        grammar.insert("zero-or-more-a", vec![
+            vec![
+                RuleElement::Terminal('a'),
+                RuleElement::NonTerminal("zero-or-more-a"),
+            ],
+            vec![RuleElement::Empty],
+        ]);
+    }
+
+    #[test]
+    pub fn no_rollup() {
+        let mut grammar: Grammar = BTreeMap::new();
+        set_grammar(&mut grammar);
+
+        let mut parser = Parser::new(&mut grammar).unwrap();
+
+        assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+            symbol:   "START",
+            children: vec![
+                ParseTree::NonTerminal {
+                    symbol:   "one-or-more-a",
+                    children: vec![
+                        ParseTree::Terminal('a'),
+                        ParseTree::NonTerminal {
+                            symbol:   "zero-or-more-a",
+                            children: vec![
+                                ParseTree::Terminal('a'),
+                                ParseTree::NonTerminal {
+                                    symbol:   "zero-or-more-a",
+                                    children: vec![
+                                        ParseTree::Terminal('a'),
+                                        ParseTree::NonTerminal {
+                                            symbol:   "zero-or-more-a",
+                                            children: vec![],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        });
+    }
+
+    #[test]
+    pub fn rollup() {
+        let mut grammar: Grammar = BTreeMap::new();
+        set_grammar(&mut grammar);
+
+        let mut parser = Parser::new(&mut grammar).unwrap();
+
+        parser.rollup(vec![
+            "one-or-more-a",
+            "zero-or-more-a",
+        ]);
+
+        assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
+            symbol:   "START",
+            children: vec![
+                ParseTree::Terminal('a'),
+                ParseTree::Terminal('a'),
+                ParseTree::Terminal('a'),
+            ],
+        });
+    }
+
+    #[test]
+    pub fn auto_rollup() {
+        let mut grammar: Grammar = BTreeMap::new();
+
+        grammar.insert("START", vec![
+            vec![
                 RuleElement::NonTerminal("a+"),
             ],
         ]);
@@ -4996,48 +5478,6 @@ mod rollup {
             ],
             vec![RuleElement::Empty],
         ]);
-    }
-
-    #[test]
-    pub fn no_rollup() {
-        let mut grammar: Grammar = BTreeMap::new();
-        set_grammar(&mut grammar);
-
-        let mut parser = Parser::new(&mut grammar).unwrap();
-
-        assert!(parser.parse("aaa").unwrap() == ParseTree::NonTerminal {
-            symbol:   "START",
-            children: vec![
-                ParseTree::NonTerminal {
-                    symbol:   "a+",
-                    children: vec![
-                        ParseTree::Terminal('a'),
-                        ParseTree::NonTerminal {
-                            symbol:   "a*",
-                            children: vec![
-                                ParseTree::Terminal('a'),
-                                ParseTree::NonTerminal {
-                                    symbol:   "a*",
-                                    children: vec![
-                                        ParseTree::Terminal('a'),
-                                        ParseTree::NonTerminal {
-                                            symbol:   "a*",
-                                            children: vec![],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        });
-    }
-
-    #[test]
-    pub fn rollup() {
-        let mut grammar: Grammar = BTreeMap::new();
-        set_grammar(&mut grammar);
 
         let mut parser = Parser::new(&mut grammar).unwrap();
 
