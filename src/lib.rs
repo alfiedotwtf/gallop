@@ -72,18 +72,16 @@
 //! production rule i.e:
 //!
 //! ```ignore
-//! a+ = 'a' a*
-//!
-//! a* = 'a' a* | ε
+//! 1. a+ -> 'a' a*
+//! 2. a* -> 'a' a* | ε
 //! ```
 //!
 //! is broken down into:
 //!
 //! ```ignore
-//! a+ =  'a' a*
-//!
-//! a* = ['a'] a*
-//! a* = ε
+//! 1. a+ -> 'a' a*
+//! 2. a* -> 'a' a*
+//! 3. a* -> ε
 //! ```
 //!
 //! and is represented in code by:
