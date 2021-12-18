@@ -32,7 +32,7 @@ See the [documentation](https://docs.rs/gallop/) for the tutorial.
 
 Please report any bugs or feature requests at:
 
-* [https://gitlab.com/alfiedotwtf/gallop/issues](https://gitlab.com/alfiedotwtf/gallop/issues)
+* [https://github.com/alfiedotwtf/gallop/issues](https://github.com/alfiedotwtf/gallop/issues)
 
 Feel free to fork the repository and submit pull requests :)
 
@@ -52,7 +52,7 @@ IT COMES WITHOUT WARRANTY OF ANY KIND.
 
 # COPYRIGHT AND LICENSE
 
-Perpetual Copyright (C) by Alfie John
+Copyright (C) 2021 by Alfie John
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software

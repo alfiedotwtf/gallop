@@ -567,7 +567,7 @@ impl <'a>Parser<'a> {
                     },
                 };
 
-                let mut current_children = children;
+                let current_children = children;
 
                 for rule_element in parse_table_entry {
                     match *rule_element {
@@ -709,7 +709,7 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
                                         }),
                                     };
 
-                                    let mut first_non_terminal = first_set.get_mut(non_terminal).unwrap();
+                                    let first_non_terminal = first_set.get_mut(non_terminal).unwrap();
                                     let old_length             = first_non_terminal.len();
 
                                     let has_empty = first_rule_element_clone.remove(&FirstElement::Empty);
@@ -732,7 +732,7 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
                 match has_empty && (1 == rule.iter().len()) {
                     false => continue,
                     true  => {
-                        let mut first_non_terminal = first_set.get_mut(non_terminal).unwrap();
+                        let first_non_terminal = first_set.get_mut(non_terminal).unwrap();
 
                         match first_non_terminal.contains(&FirstElement::Empty) {
                             true  => continue,
@@ -781,7 +781,7 @@ fn get_follow_set<'a>(grammar: &Grammar<'a>, first_set: &FirstSet<'a>) -> Follow
                         RuleElement::Empty          => {},
                         RuleElement::Terminal(_)    => {},
                         RuleElement::NonTerminal(b) => {
-                            let mut follow_rule_element_b = follow_set.get_mut(&b).unwrap();
+                            let follow_rule_element_b = follow_set.get_mut(&b).unwrap();
                             let mut extend_from_empty     = false;
 
                             for rule_element_y in rule.iter().skip(i + 1) {
@@ -979,7 +979,7 @@ fn get_reserved_ascii_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
 
 fn get_reserved_ascii_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
     ['\u{0020}', '\u{0009}','\u{000a}','\u{000c}','\u{000d}']
-        .into_iter()
+        .iter()
         .map(|c| vec![RuleElement::Terminal(*c)])
         .collect()
 }

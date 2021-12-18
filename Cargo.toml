@@ -1,11 +1,11 @@
 [package]
 name    = "gallop"
-version = "1.0.4"
+version = "1.0.5"
 authors = ["Alfie John <alfie@alfie.wtf>"]
 
 description   = "General LL(1) Parser"
 documentation = "https://docs.rs/gallop/"
-repository    = "https://gitlab.com/alfiedotwtf/gallop"
+repository    = "https://github.com/alfiedotwtf/gallop"
 readme        = "README.md"
 
 license = "GPL-3.0"
