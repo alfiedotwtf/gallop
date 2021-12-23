@@ -459,7 +459,7 @@ impl<'a> Parser<'a> {
                                     RuleElement::Terminal(_) => {}
                                     RuleElement::Empty => {}
                                     RuleElement::NonTerminal(u) => {
-                                        if false == grammar.contains_key(u) {
+                                        if !grammar.contains_key(u) {
                                             return Err(GrammarError::UndefinedNonTerminal(u));
                                         }
 
@@ -482,17 +482,17 @@ impl<'a> Parser<'a> {
                         );
                     }
 
-                    let first_set = match get_first_set(&grammar) {
+                    let first_set = match get_first_set(grammar) {
                         Ok(first_set) => first_set,
                         Err(err) => return Err(err),
                     };
 
-                    let follow_set = get_follow_set(&grammar, &first_set);
+                    let follow_set = get_follow_set(grammar, &first_set);
 
-                    match get_parse_table(&grammar, &first_set, &follow_set) {
+                    match get_parse_table(grammar, &first_set, &follow_set) {
                         Err(err) => Err(err),
                         Ok(parse_table) => Ok(Parser {
-                            parse_table: parse_table,
+                            parse_table,
                             rollups: BTreeSet::new(),
                         }),
                     }
@@ -530,8 +530,8 @@ impl<'a> Parser<'a> {
     ///
     /// ```ignore
     /// parser.rollup(vec![
-    ///		"digit+",
-    ///		"digit*",
+    ///     "digit+",
+    ///     "digit*",
     /// ]);
     /// ```
     pub fn rollup(&mut self, non_terminals: Vec<NonTerminal<'a>>) {
@@ -601,7 +601,7 @@ impl<'a> Parser<'a> {
                                     true => current_children.push(ParseTree::Terminal(next_input)),
                                 }
 
-                                input_stack.index = input_stack.index + 1;
+                                input_stack.index += 1;
                             }
                         },
                         RuleElement::NonTerminal(u) => {
@@ -697,7 +697,7 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
         for (non_terminal, rules) in grammar {
             if rules.is_empty() {
                 return Err(GrammarError::InvalidGrammar {
-                    non_terminal: non_terminal,
+                    non_terminal,
                     rule: vec![],
                     rule_element: RuleElement::Empty,
                 });
@@ -727,7 +727,7 @@ fn get_first_set<'a>(grammar: &Grammar<'a>) -> Result<FirstSet<'a>, GrammarError
                                     Some(first_rule_element) => first_rule_element.clone(),
                                     None => {
                                         return Err(GrammarError::InvalidGrammar {
-                                            non_terminal: non_terminal,
+                                            non_terminal,
                                             rule: rule.clone(),
                                             rule_element: rule_element.clone(),
                                         })
@@ -824,7 +824,7 @@ fn get_follow_set<'a>(grammar: &Grammar<'a>, first_set: &FirstSet<'a>) -> Follow
 
                                         let has_empty = first_rule_element_y
                                             .remove(&FirstElement::Empty)
-                                            || first_rule_element_y.len() == 0;
+                                            || first_rule_element_y.is_empty();
 
                                         for first_y in first_rule_element_y {
                                             match first_y {
@@ -901,7 +901,7 @@ fn get_parse_table<'a>(
                             false => break,
                             true => {
                                 return Err(GrammarError::Conflict {
-                                    non_terminal: non_terminal,
+                                    non_terminal,
                                     rule: rule.clone(),
                                     rule_element: rule_element.clone(),
                                 })
@@ -923,7 +923,7 @@ fn get_parse_table<'a>(
                                         false => continue,
                                         true => {
                                             return Err(GrammarError::Conflict {
-                                                non_terminal: non_terminal,
+                                                non_terminal,
                                                 rule: rule.clone(),
                                                 rule_element: rule_element.clone(),
                                             })
@@ -952,7 +952,7 @@ fn get_parse_table<'a>(
                             false => continue,
                             true => {
                                 return Err(GrammarError::Conflict {
-                                    non_terminal: non_terminal,
+                                    non_terminal,
                                     rule: rule.clone(),
                                     rule_element: RuleElement::Empty,
                                 })
@@ -1005,14 +1005,14 @@ fn get_reserved_non_terminals<'a>() -> BTreeMap<NonTerminal<'a>, Vec<Rule<'a>>> 
 }
 
 fn get_reserved_ascii<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    (0x0..(0x7f + 1 as u8))
+    (0x0..(0x7f + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
 }
 
 fn get_reserved_ascii_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    let mut characters: Vec<Vec<RuleElement<'a>>> = (0x0..(0x1f + 1 as u8))
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (0x0..(0x1f + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect();
@@ -1030,21 +1030,21 @@ fn get_reserved_ascii_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
 }
 
 fn get_reserved_ascii_digit<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    (('0' as u8)..('9' as u8 + 1))
+    (b'0'..(b'9' + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
 }
 
 fn get_reserved_ascii_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    (('a' as u8)..('z' as u8 + 1))
+    (b'a'..(b'z' + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
 }
 
 fn get_reserved_ascii_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    (('A' as u8)..('Z' as u8 + 1))
+    (b'A'..(b'Z' + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
@@ -1069,7 +1069,7 @@ fn get_reserved_ascii_alphanumeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
 }
 
 fn get_reserved_ascii_hexdigit_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    let mut characters: Vec<Vec<RuleElement<'a>>> = (('a' as u8)..('f' as u8 + 1))
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (b'a'..(b'f' + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect();
@@ -1080,7 +1080,7 @@ fn get_reserved_ascii_hexdigit_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
 }
 
 fn get_reserved_ascii_hexdigit_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
-    let mut characters: Vec<Vec<RuleElement<'a>>> = (('A' as u8)..('F' as u8 + 1))
+    let mut characters: Vec<Vec<RuleElement<'a>>> = (b'A'..(b'F' + 1u8))
         .into_iter()
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect();
@@ -1096,14 +1096,14 @@ fn get_reserved_ascii_hexdigit<'a>() -> Vec<Vec<RuleElement<'a>>> {
     characters.append(&mut get_reserved_ascii_digit().clone());
 
     characters.append(
-        &mut (('a' as u8)..('f' as u8 + 1))
+        &mut (b'a'..(b'f' + 1u8))
             .into_iter()
             .map(|c| vec![RuleElement::Terminal(c as char)])
             .collect(),
     );
 
     characters.append(
-        &mut (('A' as u8)..('F' as u8 + 1))
+        &mut (b'A'..(b'F' + 1u8))
             .into_iter()
             .map(|c| vec![RuleElement::Terminal(c as char)])
             .collect(),
@@ -1115,7 +1115,7 @@ fn get_reserved_ascii_hexdigit<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
     (0x0..(0x10FFFF + 1))
         .into_iter()
-        .filter_map(|c| char::from_u32(c))
+        .filter_map(char::from_u32)
         .filter(|c| (*c).is_control())
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
@@ -1124,7 +1124,7 @@ fn get_reserved_control<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
     (0x0..(0x10FFFF + 1))
         .into_iter()
-        .filter_map(|c| char::from_u32(c))
+        .filter_map(char::from_u32)
         .filter(|c| (*c).is_whitespace())
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
@@ -1133,7 +1133,7 @@ fn get_reserved_whitespace<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_numeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
     (0x0..(0x10FFFF + 1))
         .into_iter()
-        .filter_map(|c| char::from_u32(c))
+        .filter_map(char::from_u32)
         .filter(|c| (*c).is_numeric())
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
@@ -1142,7 +1142,7 @@ fn get_reserved_numeric<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
     (0x0..(0x10FFFF + 1))
         .into_iter()
-        .filter_map(|c| char::from_u32(c))
+        .filter_map(char::from_u32)
         .filter(|c| (*c).is_lowercase())
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
@@ -1151,7 +1151,7 @@ fn get_reserved_lowercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
 fn get_reserved_uppercase<'a>() -> Vec<Vec<RuleElement<'a>>> {
     (0x0..(0x10FFFF + 1))
         .into_iter()
-        .filter_map(|c| char::from_u32(c))
+        .filter_map(char::from_u32)
         .filter(|c| (*c).is_uppercase())
         .map(|c| vec![RuleElement::Terminal(c as char)])
         .collect()
