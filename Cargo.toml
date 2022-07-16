@@ -1,6 +1,6 @@
 [package]
 name    = "gallop"
-version = "1.0.6"
+version = "1.0.7"
 authors = ["Alfie John <alfie@alfie.wtf>"]
 
 description   = "General LL(1) Parser"
